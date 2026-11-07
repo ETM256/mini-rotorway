@@ -141,7 +141,8 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - [x] Lobby animé avec route courbe, maison, destination et voitures qui circulent
 - [x] 6 cartes avec aperçus circulaires et records locaux
-- [x] Tracé de routes à la souris et au doigt, lignes droites et diagonales à 45°
+- [x] Tracé de routes à la souris et au doigt, lignes droites, diagonales et virages arrondis
+- [x] Ruban noir lissé au-dessus des cases : les routes suivent les diagonales et les courbes comme dans la vidéo de référence
 - [x] Ponts pour traverser l'eau
 - [x] Ronds-points posables sur le réseau
 - [x] Serveur autoritaire : validation des routes, budget et état de la partie
@@ -198,6 +199,7 @@ mini-rotorway/
 - Le **client ne fait que demander** : il envoie des lots de cases à dessiner, à effacer ou un rond-point à poser, et affiche l'état renvoyé par le serveur.
 - Chaque joueur possède sa propre ville, placée très loin des autres dans `Workspace.MMWorlds`.
 - Le pathfinding est un **A\*** en 8 directions sur la grille 18 × 18 (cases de 4 studs), diagonales comprises.
+- Le **ruban de route** ajouté dans `Session.luau` est une spline de Catmull-Rom qui passe par les centres des cases. Il est purement visuel : il recouvre les cases pour donner les courbes et les diagonales continues de la vidéo, tandis que la simulation, les voitures et le budget restent sur la grille.
 - Le choix hebdomadaire est un `RemoteEvent` serveur → client ; le serveur reste en pause tant qu'aucune des deux options n'a été validée.
 - Les voitures partent de la maison, suivent le chemin, livrent la destination, puis reviennent. Si une route est supprimée, leur chemin est recalculé.
 
@@ -246,17 +248,20 @@ Tout est centralisé dans `src/ReplicatedStorage/MiniMotorways/Config.luau` :
 
 Les cartes sont dans `Maps.luau` : nom, description, couleurs, fonction `isWater` et petit tracé `previewRoads` pour l'aperçu du menu.
 
+Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.luau` : `edgeWidth` / `topWidth` pour la largeur, `samplesPerSegment` pour la finesse des courbes, `edgeY` / `topY` pour les hauteurs de couche. Les couleurs restent celles du jeu : `Config.Colors.Road`, `RoadEdge`, `Bridge` et `BridgeEdge`.
+
 ---
 
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `5C571B3D9E1AA90B13D851631FD49A6A3A2F3FA9A7D5649CBBF256532F53F1FA`
+- **Build actuel** : `0DFE497D6C72B723885AB71C9F5FD8BDBA0BA48CFC9747EA45D85D99849EBB2D`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 
 ### Limites connues
 
+- Le ruban lissé est **visuel** : les voitures suivent toujours les centres des cases de la grille. La courbe peut donc légèrement dépasser le centre du trajet, mais elle reste dans la largeur de la route.
 - Les voitures utilisent un évitement simple : elles peuvent se bloquer dans des situations de trafic complexes. C'est volontaire pour le prototype, mais un système de priorités/feux serait la prochaine amélioration.
 - Le zoom et le déplacement de caméra sont disponibles à la souris (molette et clic milieu) ; les gestes tactiles à deux doigts ne sont pas encore gérés.
 - Les records sont locaux au serveur/DataStore ; il n'y a pas encore de classement global.
