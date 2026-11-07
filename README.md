@@ -1,7 +1,7 @@
 # Mini Rotorway
 
 > **Prototype Roblox de gestion de trafic**, inspiré de *Mini Motorways*.
-> Projet privé pour jouer, tester et faire évoluer le jeu à deux.
+> Projet public, jouable et open source, pour jouer, tester et faire évoluer le jeu à deux.
 
 ![Statut](https://img.shields.io/badge/statut-prototype-orange)
 ![Version](https://img.shields.io/badge/version-1.3.0-blue)
@@ -284,14 +284,14 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 
 ## Avertissement
 
-**Mini Motorways** est une marque de **Dinosaur Polo Club**. Ce projet est un prototype personnel inspiré du jeu, sans lien avec l'éditeur. Avant toute publication publique, remplace le nom affiché (`Config.GameName`), le titre de la place et l'identité visuelle par ceux de **Mini Rotorway**.
+**Mini Motorways** est une marque de **Dinosaur Polo Club**. Ce projet est un prototype personnel inspiré du jeu, sans lien avec l'éditeur. Avant toute publication publique sur Roblox, remplace le nom affiché (`Config.GameName`), le titre de la place et l'identité visuelle par ceux de **Mini Rotorway**.
 
 ---
 
-## Pour mon pote et moi
+## Pour jouer à deux
 
 - **Toi (ETM256)** : garde le dossier local `mini-motorways-rbx/` pour modifier le jeu, puis pousse le build et le README sur ce dépôt.
-- **Ton pote** : télécharge `MiniMotorwaysRBX.rbxlx`, ouvre-le dans Studio et appuie sur Play. Pour jouer ensemble sur Roblox, publie la place et invite-le.
-- **Pour contribuer** : clone le dépôt, ouvre-le avec Rojo, modifie `src/`, puis rebuild.
+- **Ton pote** : récupère `MiniMotorwaysRBX.rbxlx` depuis la page GitHub publique, ouvre-le dans Studio et appuie sur Play. Pour jouer ensemble sur Roblox, publie la place et invite-le.
+- **Pour contribuer** : clone le dépôt ou fais un fork, ouvre-le avec Rojo, modifie `src/`, puis rebuild.
 
 Bon jeu et bons tests !
