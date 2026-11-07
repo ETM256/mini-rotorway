@@ -1,0 +1,65 @@
+{
+  "name": "MiniMotorwaysRBX",
+  "tree": {
+    "$className": "DataModel",
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "Gravity": 196.2
+      }
+    },
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": {
+        "$path": "src/ReplicatedStorage/MiniMotorways"
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "MiniMotorways": {
+        "$path": "src/ServerScriptService/MiniMotorways"
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "MiniMotorwaysClient": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/MiniMotorways"
+        }
+      }
+    },
+
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": "Future",
+        "Ambient": [1, 1, 1],
+        "OutdoorAmbient": [1, 1, 1],
+        "Brightness": 2,
+        "ClockTime": 12,
+        "GeographicLatitude": 0,
+        "GlobalShadows": false,
+        "ShadowSoftness": 0,
+        "EnvironmentDiffuseScale": 1,
+        "EnvironmentSpecularScale": 0,
+        "ExposureCompensation": 0
+      }
+    },
+
+    "Players": {
+      "$className": "Players",
+      "$properties": {
+        "CharacterAutoLoads": false
+      }
+    },
+
+    "SoundService": {
+      "$className": "SoundService"
+    }
+  }
+}

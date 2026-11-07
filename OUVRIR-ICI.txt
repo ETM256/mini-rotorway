@@ -1,0 +1,36 @@
+MINI ROTORWAY - PROTOTYPE ROBLOX (VERSION 1.3.0)
+=================================================
+
+1. Si Roblox Studio a déjà le fichier ouvert, ferme-le sans enregistrer.
+2. Ouvre Roblox Studio.
+3. File > Open from File...
+4. Choisis le fichier : MiniMotorwaysRBX.rbxlx
+5. Appuie sur Play (F5).
+
+Le lobby s'affiche. Clique sur "Jouer", choisis une carte,
+puis trace des routes entre les maisons et les bâtiments
+de la même couleur.
+
+Cartes : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Salaam et Londres.
+
+Chaque nouvelle semaine, le jeu se met en pause et propose
+deux améliorations. Choisis-en une pour continuer.
+
+Commandes :
+- Clic gauche + glisser : dessiner une route
+- Clic droit : effacer une route
+- 1 / 2 / 3 : route / gomme / rond-point
+- Molette : zoomer
+- Clic milieu + glisser : déplacer la caméra
+- P : pause (le temps s'arrête, mais tu peux continuer à dessiner/effacer)
+- ▶ : reprendre
+
+Pour modifier le projet :
+- Les sources sont dans le dossier src/
+- Le mapping Rojo est dans default.project.json
+- Pour reconstruire le .rbxlx :
+  powershell -ExecutionPolicy Bypass -File tools/build.ps1
+
+Attention : "Mini Motorways" est une marque de Dinosaur Polo Club.
+Ce projet est un prototype personnel. Renomme le jeu avant
+toute publication publique (voir README.md).
