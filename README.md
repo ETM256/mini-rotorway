@@ -255,7 +255,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `0DFE497D6C72B723885AB71C9F5FD8BDBA0BA48CFC9747EA45D85D99849EBB2D`
+- **Build actuel** : `4FEAF8E7101ADDCF02DD9B4664CAD4AB56DF47B36DCBB55731772334099DA85B`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 

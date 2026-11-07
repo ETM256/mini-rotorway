@@ -158,6 +158,7 @@ function Session.new(player, mapId, worldIndex)
 	self.roadRibbonPaths = {}
 	self.ribbonEdges = {}
 	self.lastRibbonCell = nil
+	self.roadRibbonsDirty = false
 	self.roundaboutParts = {}
 	self.buildings = {}
 	self.buildingList = {}
@@ -1258,6 +1259,15 @@ function Session:createRibbonForPath(path, pathIndex)
 end
 
 function Session:addRoadRibbons(cells)
+	if type(cells) ~= "table" or not self.world or not self.world.Roads then
+		return
+	end
+	-- Si un effacement attend sa reconstruction, on le solde d'abord pour
+	-- que le nouveau tracé ne soit pas considéré comme déjà couvert.
+	if self.roadRibbonsDirty then
+		self.roadRibbonsDirty = false
+		self:rebuildRoadRibbons()
+	end
 	local ordered = {}
 	local firstKey = nil
 
@@ -1322,6 +1332,9 @@ function Session:addRoadRibbons(cells)
 end
 
 function Session:rebuildRoadRibbons()
+	if not self.world or not self.world.Roads then
+		return
+	end
 	self:clearRoadRibbons()
 	self.ribbonEdges = {}
 	local newPaths = {}
@@ -1468,7 +1481,10 @@ function Session:eraseRoad(key)
 		end
 	end
 
-	self:rebuildRoadRibbons()
+	-- On regroupe les reconstructions de rubans : un effacement au clic
+	-- droit peut envoyer plusieurs cases d'affilée. Le ruban est reconstruit
+	-- une seule fois à la prochaine frame.
+	self.roadRibbonsDirty = true
 
 	self.roadVersion += 1
 	self:refreshCarPaths()
@@ -1884,6 +1900,13 @@ function Session:setSpeed(value)
 end
 
 function Session:update(dt)
+	-- Même en pause, on peut effacer des routes : le ruban visuel doit se
+	-- mettre à jour sans attendre la reprise de la simulation.
+	if self.roadRibbonsDirty then
+		self.roadRibbonsDirty = false
+		self:rebuildRoadRibbons()
+	end
+
 	if not self.running or self.paused or self.over or self.awaitingChoice then
 		return
 	end
