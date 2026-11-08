@@ -273,7 +273,8 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - `c5b2ffe` : extrémités de route plates, sans ronds ;
   - `f74b7f9` : suppression des disques de jonction aux extrémités ;
   - `0519f67` : détails des extrémités plates dans le README ;
-  - `90ff98c` : choix hebdomadaires fidèles à Mini Motorways.
+  - `90ff98c` : choix hebdomadaires fidèles à Mini Motorways ;
+  - `3325d42` : extrémités ovales et suppression du gros carré de construction.
 
 ### 9. État actuel
 
