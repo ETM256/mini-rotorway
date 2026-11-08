@@ -1211,19 +1211,27 @@ function Session:createRibbonForPath(path, pathIndex)
 		local edgeY = bridge and 0.23 or 0.17
 		local topHeight = bridge and 0.22 or 0.20
 		local topY = bridge and 0.32 or 0.24
+		-- Aux vraies extrémités, le disque de jonction formerait encore un
+		-- gros rond. On le saute : l'extension plate ajoutée plus bas suffit.
+		local flatStart = i == 1
+			and not self:hasOtherRoadNeighbor(path[1], path[2])
+		local flatEnd = i == #points
+			and not self:hasOtherRoadNeighbor(path[#path], path[#path - 1])
 
-		self:addRibbonDisk(
-			"RoadRibbonEdgeJoint" .. pathIndex .. "_" .. i,
-			Vector3.new(edgeHeight - 0.02, edgeWidth, edgeWidth),
-			point + Vector3.new(0, edgeY + yOffset + ribbonLift, 0),
-			edgeColor
-		)
-		self:addRibbonDisk(
-			"RoadRibbonTopJoint" .. pathIndex .. "_" .. i,
-			Vector3.new(topHeight - 0.02, topWidth, topWidth),
-			point + Vector3.new(0, topY + yOffset + ribbonLift, 0),
-			topColor
-		)
+		if not flatStart and not flatEnd then
+			self:addRibbonDisk(
+				"RoadRibbonEdgeJoint" .. pathIndex .. "_" .. i,
+				Vector3.new(edgeHeight - 0.02, edgeWidth, edgeWidth),
+				point + Vector3.new(0, edgeY + yOffset + ribbonLift, 0),
+				edgeColor
+			)
+			self:addRibbonDisk(
+				"RoadRibbonTopJoint" .. pathIndex .. "_" .. i,
+				Vector3.new(topHeight - 0.02, topWidth, topWidth),
+				point + Vector3.new(0, topY + yOffset + ribbonLift, 0),
+				topColor
+			)
+		end
 	end
 
 	-- Extrémités du ruban : on prolonge le dernier segment jusqu'au bord de

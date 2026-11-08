@@ -240,7 +240,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `B9582D51...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `1D1D09C0...`.
 
 ### 7. Retour à la base stable
 
@@ -273,7 +273,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Version **1.3.0**, prototype jouable.
 - **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`.
+- Build actuel : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`.
 - 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités plates, ponts, ronds-points, semaines et records.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
 - Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
@@ -284,7 +284,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Les capuchons ronds du ruban et des cases sont remplacés par des **extensions droites** qui vont jusqu'au bord de la case.
 - La coupe est **plate**, dans l'axe de la route : plus de disque ni de demi-cercle aux extrémités.
 - Les jonctions et les virages conservent leurs formes arrondies ; seules les vraies fins de route sont plates.
-- Build reconstruit et vérifié : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`.
+- Build reconstruit et vérifié : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`.
 
 ---
 
@@ -385,7 +385,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`
+- **Build actuel** : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 
