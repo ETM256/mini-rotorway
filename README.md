@@ -116,7 +116,7 @@ La pause manuelle fige le temps mais **laisse la construction active** : on peut
 - **Routes** : une route coûte **1 route** par case. Une case d'eau coûte **1 pont**.
 - **Ronds-points** : ils peuvent être posés sur une route existante comme repère de carrefour et sont récupérés si la route est effacée.
 - **Semaines** : une semaine dure **60 secondes**. À la fin de chaque semaine, la partie se met en pause et propose **deux améliorations**. Le joueur en choisit une, puis la semaine suivante commence.
-- **Améliorations** : une proposition est toujours une réserve de routes (+20 ou +10). L'autre est un pont (+1) ou un rond-point (+1).
+- **Améliorations** : chaque semaine, deux propositions. Les deux donnent des routes : **+20 routes** avec un outil spécial, ou **+30 / +40 routes** sans outil. Une seule proposition contient un **pont** ou un **rond-point**, comme dans Mini Motorways.
 - **Circulation** : si des voitures restent bloquées trop longtemps, la jauge de circulation baisse. À **0 %**, la partie est terminée.
 - **Budget de départ** : 20 routes, 1 pont, 0 rond-point, 3 paires maison/destination.
 - **Records** : le meilleur score de chaque carte est affiché dans le lobby et sauvegardé si les DataStores sont disponibles.
@@ -149,7 +149,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - [x] Serveur autoritaire : validation des routes, budget et état de la partie
 - [x] Pathfinding A* en 8 directions sur la grille 18 × 18
 - [x] Voitures qui partent, livrent, reviennent et recalculent leur chemin
-- [x] Choix hebdomadaire entre deux améliorations
+- [x] Choix hebdomadaire fidèle au jeu : routes + outil spécial, ou lot de routes
 - [x] Jauge de circulation et game over
 - [x] Records par carte avec DataStore et fallback en mémoire
 - [x] Interface adaptative portrait/paysage
@@ -241,7 +241,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `1D1D09C0...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `C9461522...`.
 
 ### 7. Retour à la base stable
 
@@ -276,8 +276,9 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Version **1.3.0**, prototype jouable.
 - **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`.
+- Build actuel : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`.
 - 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités plates, ponts, ronds-points, semaines et records.
+- Choix hebdomadaires : **+1 pont/rond-point +20 routes**, ou **+30 / +40 routes**.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
 - Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
 
@@ -288,7 +289,23 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Les **disques de jonction** ne sont plus créés aux extrémités : ils restent uniquement aux virages et aux raccords intermédiaires.
 - La coupe est **plate**, dans l'axe de la route : plus de disque ni de demi-cercle aux extrémités.
 - Les jonctions et les virages conservent leurs formes arrondies ; seules les vraies fins de route sont plates.
-- Build reconstruit et vérifié : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`.
+- Build reconstruit et vérifié : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`.
+
+### 11. Choix hebdomadaires fidèles à Mini Motorways
+
+- Recherche sur le fonctionnement réel des **budget increases** de Mini Motorways (Wikipedia et wiki Fandom).
+- Règle appliquée : chaque semaine propose **deux choix**, et **les deux donnent des routes**.
+  - Une proposition contient un **outil spécial + 20 routes** (pont ou rond-point).
+  - L'autre proposition est un **lot de routes seul** : **+30 routes**, parfois **+40 routes**.
+- Une seule proposition contient un outil spécial, comme dans le jeu original.
+- Les outils déjà au maximum ne sont plus proposés.
+- Si tous les outils sont au maximum, les deux propositions deviennent des lots de routes.
+- Le serveur reste en pause tant que le joueur n'a pas choisi.
+- Outils réels du jeu original : **Bridge, Motorway, Road Tiles, Roundabout, Traffic Light, Tunnel**.
+- Le prototype implémente **Bridge, Roundabout et Road Tiles**. **Motorway**, **Traffic Light** et **Tunnel** ne sont pas encore disponibles : ils ne sont donc pas proposés pour éviter des choix inutiles.
+- Sources :
+  - [Mini Motorways — Wikipedia](https://en.wikipedia.org/wiki/Mini_Motorways)
+  - [Upgrades — Mini Motorways Wiki](https://mini-motorways.fandom.com/wiki/Upgrades)
 
 ---
 
@@ -389,7 +406,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`
+- **Build actuel** : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 

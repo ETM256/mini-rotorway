@@ -34,12 +34,11 @@ Config.Camera = {
 	BackRatio = 0.035,
 }
 
--- Road and bridge budget. These are the same numbers as the reference
--- PC gameplay: start with 20 roads and 1 bridge, then +20 roads and
--- +1 bridge every week.
+-- Budget de départ et limites. Les gains hebdomadaires réels sont décrits
+-- dans Config.Rewards : +20 routes avec un outil spécial, ou +30/+40 routes.
 Config.Roads = {
 	StartBudget = 20,
-	WeekReward = 20,
+	WeekReward = 30,
 	MaxBudget = 999,
 	StartBridges = 1,
 	WeekBridges = 1,
@@ -49,35 +48,39 @@ Config.Roads = {
 	MaxRoundabouts = 9,
 }
 
--- Weekly upgrade choice. The server pauses the run and sends two options.
+-- Choix hebdomadaire inspiré de Mini Motorways : chaque semaine, deux
+-- propositions. Les deux donnent des routes ; une seule contient un outil
+-- spécial. C'est le fonctionnement réel du jeu (voir README, section 11).
 Config.Rewards = {
 	Roads = {
 		id = "roads",
 		kind = "roads",
-		amount = 20,
-		title = "+20 routes",
-		description = "Un nouveau lot de routes pour étendre votre réseau.",
+		amount = 30,
+		title = "+30 routes",
+		description = "Un lot de 30 routes pour étendre votre réseau.",
 	},
-	RoadsSmall = {
-		id = "roads_small",
+	RoadsLarge = {
+		id = "roads_large",
 		kind = "roads",
-		amount = 10,
-		title = "+10 routes",
-		description = "Un petit bonus pour finir les connexions importantes.",
+		amount = 40,
+		title = "+40 routes",
+		description = "Un grand lot de 40 routes pour les grands projets.",
 	},
 	Bridge = {
 		id = "bridge",
 		kind = "bridges",
 		amount = 1,
+		roads = 20,
 		title = "+1 pont",
-		description = "Un pont supplémentaire pour traverser l'eau.",
+		description = "Un pont + 20 routes pour traverser l'eau.",
 	},
 	Roundabout = {
 		id = "roundabout",
 		kind = "roundabouts",
 		amount = 1,
+		roads = 20,
 		title = "+1 rond-point",
-		description = "Un rond-point pour fluidifier un carrefour.",
+		description = "Un rond-point + 20 routes pour fluidifier un carrefour.",
 	},
 }
 

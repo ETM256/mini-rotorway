@@ -66,7 +66,8 @@
 7. Vérifier qu'une voiture part, livre, revient, et que le score monte.
 8. Utiliser l'outil gomme et vérifier le recalcul des voitures.
 9. Attendre une fin de semaine : la partie se met en pause et deux
-   améliorations sont proposées. Choisir +20 routes ou +1 pont/rond-point.
+   améliorations sont proposées. Vérifier le modèle réel : une proposition
+   contient un pont/rond-point + 20 routes, l'autre un lot de 30/40 routes.
 10. Vérifier que le compteur correspondant augmente et que la semaine reprend.
 11. Choisir un rond-point, le poser sur une route, puis effacer la route pour
     vérifier le remboursement du rond-point.
@@ -179,6 +180,7 @@
 - Sons et musique discrète.
 - Tutoriel au premier lancement.
 - Meilleure gestion des intersections et priorités.
+- Ajouter les outils **Motorway**, **Traffic Light** et **Tunnel** pour compléter les six améliorations de Mini Motorways.
 - Modes de jeu supplémentaires.
 - Classement global et statistiques.
 - Nom/identité originale avant publication publique.

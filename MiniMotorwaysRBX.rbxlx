@@ -76,12 +76,11 @@ Config.Camera = {
 	BackRatio = 0.035,
 }
 
--- Road and bridge budget. These are the same numbers as the reference
--- PC gameplay: start with 20 roads and 1 bridge, then +20 roads and
--- +1 bridge every week.
+-- Budget de départ et limites. Les gains hebdomadaires réels sont décrits
+-- dans Config.Rewards : +20 routes avec un outil spécial, ou +30/+40 routes.
 Config.Roads = {
 	StartBudget = 20,
-	WeekReward = 20,
+	WeekReward = 30,
 	MaxBudget = 999,
 	StartBridges = 1,
 	WeekBridges = 1,
@@ -91,35 +90,39 @@ Config.Roads = {
 	MaxRoundabouts = 9,
 }
 
--- Weekly upgrade choice. The server pauses the run and sends two options.
+-- Choix hebdomadaire inspiré de Mini Motorways : chaque semaine, deux
+-- propositions. Les deux donnent des routes ; une seule contient un outil
+-- spécial. C'est le fonctionnement réel du jeu (voir README, section 11).
 Config.Rewards = {
 	Roads = {
 		id = "roads",
 		kind = "roads",
-		amount = 20,
-		title = "+20 routes",
-		description = "Un nouveau lot de routes pour étendre votre réseau.",
+		amount = 30,
+		title = "+30 routes",
+		description = "Un lot de 30 routes pour étendre votre réseau.",
 	},
-	RoadsSmall = {
-		id = "roads_small",
+	RoadsLarge = {
+		id = "roads_large",
 		kind = "roads",
-		amount = 10,
-		title = "+10 routes",
-		description = "Un petit bonus pour finir les connexions importantes.",
+		amount = 40,
+		title = "+40 routes",
+		description = "Un grand lot de 40 routes pour les grands projets.",
 	},
 	Bridge = {
 		id = "bridge",
 		kind = "bridges",
 		amount = 1,
+		roads = 20,
 		title = "+1 pont",
-		description = "Un pont supplémentaire pour traverser l'eau.",
+		description = "Un pont + 20 routes pour traverser l'eau.",
 	},
 	Roundabout = {
 		id = "roundabout",
 		kind = "roundabouts",
 		amount = 1,
+		roads = 20,
 		title = "+1 rond-point",
-		description = "Un rond-point pour fluidifier un carrefour.",
+		description = "Un rond-point + 20 routes pour fluidifier un carrefour.",
 	},
 }
 
@@ -3066,9 +3069,32 @@ function Session:updateSatisfaction(dt)
 end
 
 function Session:pickWeekChoices()
-	local roadReward = math.random() < 0.35 and Config.Rewards.RoadsSmall or Config.Rewards.Roads
-	local secondReward = math.random() < 0.5 and Config.Rewards.Bridge or Config.Rewards.Roundabout
-	local options = { roadReward, secondReward }
+	-- Comme dans Mini Motorways : une proposition contient un outil spécial
+	-- (pont ou rond-point) accompagné de routes, l'autre est un lot de routes.
+	-- On ne propose pas un outil déjà au maximum.
+	local specials = {}
+	if self.bridgesLeft < Config.Roads.MaxBridges then
+		table.insert(specials, Config.Rewards.Bridge)
+	end
+	if self.roundaboutsLeft < Config.Roads.MaxRoundabouts then
+		table.insert(specials, Config.Rewards.Roundabout)
+	end
+
+	local roadReward = math.random() < 0.25 and Config.Rewards.RoadsLarge or Config.Rewards.Roads
+	if #specials == 0 then
+		-- Tous les outils sont au maximum : deux lots de routes différents.
+		local otherReward = roadReward == Config.Rewards.Roads
+			and Config.Rewards.RoadsLarge
+			or Config.Rewards.Roads
+		local options = { roadReward, otherReward }
+		if math.random() < 0.5 then
+			options[1], options[2] = options[2], options[1]
+		end
+		return options
+	end
+
+	local specialReward = specials[math.random(1, #specials)]
+	local options = { specialReward, roadReward }
 	if math.random() < 0.5 then
 		options[1], options[2] = options[2], options[1]
 	end
@@ -3101,19 +3127,29 @@ function Session:chooseReward(optionId)
 		return
 	end
 
+	-- Les outils spéciaux sont toujours accompagnés de routes (20 routes
+	-- pour un pont ou un rond-point, comme dans Mini Motorways).
+	local roadGain = selected.roads or 0
 	if selected.kind == "roads" then
-		self.budget = math.min(Config.Roads.MaxBudget, self.budget + selected.amount)
+		roadGain += selected.amount
 	elseif selected.kind == "bridges" then
 		self.bridgesLeft = math.min(Config.Roads.MaxBridges, self.bridgesLeft + selected.amount)
 	elseif selected.kind == "roundabouts" then
 		self.roundaboutsLeft = math.min(Config.Roads.MaxRoundabouts, self.roundaboutsLeft + selected.amount)
+	end
+	if roadGain > 0 then
+		self.budget = math.min(Config.Roads.MaxBudget, self.budget + roadGain)
 	end
 
 	self.awaitingChoice = false
 	self.choice = nil
 	self.paused = false
 	self:sendState()
-	self:toast("Amélioration choisie : " .. selected.title .. ".")
+	local gainText = selected.title or "Amélioration"
+	if selected.roads and selected.roads > 0 then
+		gainText = gainText .. " + " .. tostring(selected.roads) .. " routes"
+	end
+	self:toast("Amélioration choisie : " .. gainText .. ".")
 end
 
 function Session:setSpeed(value)
