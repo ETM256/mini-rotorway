@@ -267,7 +267,8 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - `484c867` : reconstruction différée et robustesse ;
   - `1b74f25` : page GitHub publique ;
   - `e898c12` : historique complet du projet ;
-  - `c5b2ffe` : extrémités de route plates, sans ronds.
+  - `c5b2ffe` : extrémités de route plates, sans ronds ;
+  - `f74b7f9` : suppression des disques de jonction aux extrémités.
 
 ### 9. État actuel
 
@@ -282,6 +283,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Les gros **ronds aux fins de route** ont été supprimés, à la demande de l'utilisateur.
 - Les capuchons ronds du ruban et des cases sont remplacés par des **extensions droites** qui vont jusqu'au bord de la case.
+- Les **disques de jonction** ne sont plus créés aux extrémités : ils restent uniquement aux virages et aux raccords intermédiaires.
 - La coupe est **plate**, dans l'axe de la route : plus de disque ni de demi-cercle aux extrémités.
 - Les jonctions et les virages conservent leurs formes arrondies ; seules les vraies fins de route sont plates.
 - Build reconstruit et vérifié : `1D1D09C0940390C0394C57259EE9BCF9CA8BCABC4AAD868072AE7A3487D79F46`.
