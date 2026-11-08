@@ -209,7 +209,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Presqu'îles sèches et côtes retravaillées, avec raccord terre net.
 - Lumière adoucie : `Brightness = 0.8`, ambiance beige plus sombre et exposition réduite.
 - Bordure beige hachurée avec étiquettes verticales turquoise.
-- Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités arrondies.
+- Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités plates.
 - Bâtiments façon icônes : cartes plates à coins arrondis, liseré blanc, ombre douce, allée, toit à deux teintes, cheminées et épingles de destination.
 - Petits arbres vectoriels dans les parcs.
 - Voitures avec contour et toit clair pour rester lisibles sur les routes sombres.
@@ -236,11 +236,11 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - un liseré blanc ;
   - des virages arrondis ;
   - des jonctions en disque ;
-  - des extrémités arrondies ;
+  - des **extrémités plates**, sans gros ronds aux fins de route ;
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `4FEAF8E7...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `B9582D51...`.
 
 ### 7. Retour à la base stable
 
@@ -271,10 +271,18 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Version **1.3.0**, prototype jouable.
 - **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `4FEAF8E7101ADDCF02DD9B4664CAD4AB56DF47B36DCBB55731772334099DA85B`.
-- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, ponts, ronds-points, semaines et records.
+- Build actuel : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`.
+- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités plates, ponts, ronds-points, semaines et records.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
 - Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
+
+### 10. Extrémités plates
+
+- Les gros **ronds aux fins de route** ont été supprimés, à la demande de l'utilisateur.
+- Les capuchons ronds du ruban et des cases sont remplacés par des **extensions droites** qui vont jusqu'au bord de la case.
+- La coupe est **plate**, dans l'axe de la route : plus de disque ni de demi-cercle aux extrémités.
+- Les jonctions et les virages conservent leurs formes arrondies ; seules les vraies fins de route sont plates.
+- Build reconstruit et vérifié : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`.
 
 ---
 
@@ -375,7 +383,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `4FEAF8E7101ADDCF02DD9B4664CAD4AB56DF47B36DCBB55731772334099DA85B`
+- **Build actuel** : `B9582D5100107112673F18806C4F6EF77A564514D00699B715BB3935DD7C85AB`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 

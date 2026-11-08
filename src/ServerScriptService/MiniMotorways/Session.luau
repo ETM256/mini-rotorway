@@ -943,28 +943,34 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 	addTileLayer("RoadContour", contourWidth, contourHeight, contourCenterY, contourColor)
 	addTileLayer("Road", roadWidth, topHeight, topCenterY, color)
 
-	-- Extrémité : un demi-cercle net, dans le prolongement de la route.
-	-- On le garde uniquement pour une vraie impasse orthogonale ; une case
-	-- reliée aussi en diagonale est un virage, pas une extrémité.
+	-- Extrémité : on prolonge la route jusqu'au bord de la case avec une
+	-- coupe droite. Pas de disque ni de demi-cercle : l'utilisateur veut des
+	-- fins de route plates, sans gros « ronds » aux extrémités.
 	if #neighborDirs == 1 and #diagonalDirs == 0 then
 		local dir = neighborDirs[1]
-		local capCenter = Grid.center(self.origin, x - dir[1] * 0.5, y - dir[2] * 0.5, 0)
-		addCylinder(
-			"RoadOutlineCap",
-			Vector3.new(outlineHeight - 0.02, edgeWidth, edgeWidth),
+		local direction = Vector3.new(dir[1], 0, dir[2])
+		local capLength = tile * 0.5
+		local capCenter = center
+			+ direction * (capLength * 0.5)
+		addRotatedBox(
+			"RoadOutlineEnd",
+			Vector3.new(edgeWidth, outlineHeight, capLength),
 			capCenter + Vector3.new(0, outlineCenterY + layerLift, 0),
+			direction,
 			edgeColor
 		)
-		addCylinder(
-			"RoadContourCap",
-			Vector3.new(contourHeight - 0.02, contourWidth, contourWidth),
+		addRotatedBox(
+			"RoadContourEnd",
+			Vector3.new(contourWidth, contourHeight, capLength),
 			capCenter + Vector3.new(0, contourCenterY + layerLift, 0),
+			direction,
 			contourColor
 		)
-		addCylinder(
-			"RoadCap",
-			Vector3.new(topHeight - 0.02, roadWidth, roadWidth),
+		addRotatedBox(
+			"RoadEnd",
+			Vector3.new(roadWidth, topHeight, capLength),
 			capCenter + Vector3.new(0, topCenterY + layerLift, 0),
+			direction,
 			color
 		)
 	end
@@ -1220,13 +1226,18 @@ function Session:createRibbonForPath(path, pathIndex)
 		)
 	end
 
-	-- Capuchons ronds aux vraies extrémités du tracé. On les omet quand la
-	-- case est déjà reliée à une autre route : le raccord reste alors plat.
+	-- Extrémités du ruban : on prolonge le dernier segment jusqu'au bord de
+	-- la case avec une coupe droite, au lieu d'un gros disque rond. On omet
+	-- cette extension quand la case est déjà reliée à une autre route.
 	local function addCap(point, direction, bridge, suffix)
 		if not direction or direction.Magnitude < 0.001 then
 			return
 		end
-		local capCenter = point + direction.Unit * (self.tile * 0.5)
+		local unit = direction.Unit
+		-- On va jusqu'au bord de la case dans la direction de la route :
+		-- 0,5 case pour un axe, ~0,707 case pour une diagonale (le coin).
+		local capLength = (self.tile * 0.5) / math.max(math.abs(unit.X), math.abs(unit.Z))
+		local capCenter = point + unit * (capLength * 0.5)
 		local edgeColor = bridge and Config.Colors.BridgeEdge or Config.Colors.RoadEdge
 		local topColor = bridge and Config.Colors.Bridge or Config.Colors.Road
 		local edgeHeight = bridge and 0.30 or 0.26
@@ -1234,16 +1245,18 @@ function Session:createRibbonForPath(path, pathIndex)
 		local topHeight = bridge and 0.22 or 0.20
 		local topY = bridge and 0.32 or 0.24
 
-		self:addRibbonDisk(
-			"RoadRibbonEdgeCap" .. pathIndex .. suffix,
-			Vector3.new(edgeHeight - 0.02, edgeWidth, edgeWidth),
+		self:addRibbonPart(
+			"RoadRibbonEdgeEnd" .. pathIndex .. suffix,
+			Vector3.new(edgeWidth, edgeHeight, capLength),
 			capCenter + Vector3.new(0, edgeY + yOffset + ribbonLift, 0),
+			unit,
 			edgeColor
 		)
-		self:addRibbonDisk(
-			"RoadRibbonTopCap" .. pathIndex .. suffix,
-			Vector3.new(topHeight - 0.02, topWidth, topWidth),
+		self:addRibbonPart(
+			"RoadRibbonTopEnd" .. pathIndex .. suffix,
+			Vector3.new(topWidth, topHeight, capLength),
 			capCenter + Vector3.new(0, topY + yOffset + ribbonLift, 0),
+			unit,
 			topColor
 		)
 	end
