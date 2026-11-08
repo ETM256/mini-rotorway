@@ -24,6 +24,7 @@ Le projet contient **6 cartes** : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Sal
 - [Règles du jeu](#règles-du-jeu)
 - [Les 6 cartes](#les-6-cartes)
 - [Fonctionnalités](#fonctionnalités)
+- [Historique du projet](#historique-du-projet)
 - [Architecture](#architecture)
 - [Développement](#développement)
 - [État du prototype](#état-du-prototype)
@@ -155,6 +156,125 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - [x] Caméra avec zoom et déplacement
 - [x] Pause, reprise et accélération du temps
 - [x] Tout le décor et l'UI sont générés en code, sans asset externe
+
+---
+
+## Historique du projet
+
+### Chronologie rapide
+
+| Période | Étape |
+| --- | --- |
+| Fin octobre 2026 | Fondations Rojo, grille 18 × 18, pathfinding, serveur, client, refonte visuelle claire et française |
+| 04/11/2026 | Sauvegarde d'un état issu d'une refonte plus lourde, finalement écartée |
+| 07/11/2026 | Retour au prototype stable 1.3.0, page GitHub complète, routes diagonales lissées, dépôt public |
+
+### 1. Fondations techniques
+
+- Mise en place de la structure **Rojo** (`default.project.json`) et du build `MiniMotorwaysRBX.rbxlx`.
+- Création de `Config.luau` : grille 18 × 18, cases de 4 studs, budgets, semaines, trafic, récompenses et palette.
+- Création de `Maps.luau` avec **6 cartes** : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Salaam et Londres.
+- Création de `Grid.luau` : conversions case ↔ position 3D et voisinage orthogonal + diagonal.
+- Création de `Pathfinding.luau` : **A\*** sur les routes en 8 directions.
+- Création de `Remotes.luau` : RemoteEvents partagés entre serveur et client.
+
+### 2. Serveur de jeu
+
+- `Bootstrap.server.luau` : remotes, profils, boucle de jeu et gestion des sessions.
+- `Session.luau` : routes, ponts, ronds-points, bâtiments, maisons, destinations, voitures, semaines, score et jauge de circulation.
+- `WorldBuilder.luau` : sol crème, eau menthe, parcs, grille, étiquettes et dossiers 3D.
+- `Profile.luau` : meilleurs scores via DataStore `MiniMotorwaysV1`, avec fallback en mémoire.
+- **Serveur autoritaire** : il valide les routes, le budget, les ponts et les ronds-points.
+- Une **ville isolée par joueur** dans `Workspace.MMWorlds`.
+- Les voitures partent de la maison, livrent la destination, reviennent, et recalculent leur chemin si une route est supprimée.
+- Choix hebdomadaire : pause serveur, deux améliorations proposées, validation puis reprise.
+- Budget de départ : **20 routes, 1 pont, 0 rond-point, 3 paires maison/destination**.
+
+### 3. Client, caméra et interface
+
+- `Main.client.luau` : câblage du lobby, du HUD, de la caméra et des entrées.
+- `CameraController.luau` : caméra de dessus quasi orthographique (FOV 20), zoom à la molette et déplacement au clic milieu.
+- `InputController.luau` : dessin à la souris et au doigt, fantôme de visée, gomme et outil rond-point.
+- `UI/Theme.luau` : palette claire et composants réutilisables.
+- `UI/MapPreview.luau` : aperçus circulaires des cartes avec eau, parcs et tracé de route.
+- `UI/Lobby.luau` : menu, 6 cartes, garage, statistiques et records.
+- `UI/HUD.luau` : score, jour, horloge, vitesse, outils, compteurs, pause et écran de fin.
+- Interface adaptative **portrait / paysage**, textes redimensionnés et interface entièrement en **français**.
+
+### 4. Refonte visuelle claire
+
+- Palette de Los Angeles : fond pêche, sol crème, eau menthe, eau profonde, parcs jaune-vert, liseré de côte blanc et ombre beige.
+- Eau 3D lissée avec plusieurs couches et formes arrondies (rectangles, ellipses tournées, capsules).
+- Correction des ellipses d'eau avec un `SpecialMesh` sphère pour éviter les formes aplaties invisibles.
+- Presqu'îles sèches et côtes retravaillées, avec raccord terre net.
+- Lumière adoucie : `Brightness = 0.8`, ambiance beige plus sombre et exposition réduite.
+- Bordure beige hachurée avec étiquettes verticales turquoise.
+- Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités arrondies.
+- Bâtiments façon icônes : cartes plates à coins arrondis, liseré blanc, ombre douce, allée, toit à deux teintes, cheminées et épingles de destination.
+- Petits arbres vectoriels dans les parcs.
+- Voitures avec contour et toit clair pour rester lisibles sur les routes sombres.
+
+### 5. Corrections et stabilisation
+
+- `Enum.ScrollDirection` remplacé par `Enum.ScrollingDirection`.
+- Boutons du lobby et du HUD fiabilisés avec `Active`, `Selectable` et fallback `MouseButton1Click`.
+- Constructeurs `Vector3(...)` corrigés en `Vector3.new(...)`.
+- Horloge corrigée : aiguilles centrées et aiguille des heures progressive.
+- Contrôles de temps masqués par défaut, affichés au clic sur l'horloge.
+- Pause manuelle : le temps s'arrête mais les routes restent modifiables.
+- Diagonales corrigées : le client n'improvise plus un escalier de cases, le pathfinding utilise les 8 voisins et les voitures conservent leur vitesse réelle sur les segments diagonaux plus longs.
+- Routes voisines rafraîchies dans les 8 directions pour éviter les raccords manquants.
+- Apparition animée des routes : croissance et fondu à chaque case posée.
+
+### 6. Routes diagonales et ruban lissé
+
+- Analyse des **deux vidéos de référence** (65 s et 33 s, 1280 × 720, 30 fps) avec extraction d'images.
+- Les vidéos montrent une route blanche libre, avec courbes, diagonales et extrémités arrondies.
+- Décision de garder les **routes noires du jeu**, tout en reprenant la forme et le lissé.
+- Ajout dans `Session.luau` d'un **ruban noir continu** tracé avec une spline de **Catmull-Rom** passant par les centres des cases.
+- Le ruban ajoute :
+  - un liseré blanc ;
+  - des virages arrondis ;
+  - des jonctions en disque ;
+  - des extrémités arrondies ;
+  - des couleurs spécifiques pour les ponts.
+- La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
+- L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `4FEAF8E7...`.
+
+### 7. Retour à la base stable
+
+- Une refonte plus ambitieuse a été tentée après la première version jouable.
+- Elle a été sauvegardée puis volontairement mise de côté pour repartir du prototype **18 × 18 / version 1.3.0**, plus stable et plus proche de la version validée.
+- Sauvegardes conservées :
+  - `mini-motorways-rbx-backup-20261104-183146` ;
+  - `mini-motorways-rbx-E7AB-backup-20261107-221824`.
+- Le retour à la base stable a été fait avant d'ajouter le ruban lissé, pour ne pas mélanger les changements.
+
+### 8. Page GitHub et publication
+
+- Dépôt créé : **`ETM256/mini-rotorway`**.
+- Ajout du build jouable, des sources, de la configuration Rojo, des outils et de `docs/PLAN.md`.
+- README complet en français : pitch, téléchargement, commandes, règles, cartes, architecture, développement, état, roadmap et avertissement de marque.
+- Ajout de `OUVRIR-ICI.txt` pour lancer le jeu rapidement.
+- Ajout de `.gitignore` pour les fichiers temporaires Roblox / Windows.
+- Le dépôt était privé, avec le pote ajouté comme collaborateur.
+- Le **07/11/2026**, le dépôt est passé **public** : le pote peut maintenant télécharger le build sans être collaborateur.
+- Pour contribuer au code, il faut toujours soit être collaborateur, soit passer par un fork + pull request.
+- Commits principaux :
+  - `5c515f9` : page GitHub et prototype jouable ;
+  - `7479921` : ruban de route lissé ;
+  - `484c867` : reconstruction différée et robustesse ;
+  - `1b74f25` : page GitHub publique.
+
+### 9. État actuel
+
+- Version **1.3.0**, prototype jouable.
+- **16 fichiers Luau**, 0 erreur de syntaxe.
+- Build actuel : `4FEAF8E7101ADDCF02DD9B4664CAD4AB56DF47B36DCBB55731772334099DA85B`.
+- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, ponts, ronds-points, semaines et records.
+- Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
+- Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
 
 ---
 
