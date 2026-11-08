@@ -2,8 +2,10 @@
 	InputController.luau
 	Dessin des routes à la souris / au doigt.
 	Le client envoie des lots de cases au serveur ; le serveur valide.
-	Un seul "fantôme" carré montre la case survolée. La carte garde sa taille,
-	mais le carré de visée est agrandi et la détection favorise les diagonales.
+	En construction, aucun gros carré de visée ne suit le curseur : la route
+	apparaît directement. Un fantôme discret reste pour la gomme et le
+	rond-point. La carte garde sa taille, mais la détection favorise les
+	diagonales.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

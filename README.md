@@ -243,7 +243,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `A2989511...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `7DB81580...`.
 
 ### 7. Retour à la base stable
 
@@ -280,7 +280,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Version **1.3.0**, prototype jouable.
 - **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`.
+- Build actuel : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`.
 - 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités ovales, ponts, ronds-points, semaines et records.
 - Choix hebdomadaires : **+1 pont/rond-point +20 routes**, ou **+30 / +40 routes**.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
@@ -297,7 +297,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Les **disques de jonction** restent réservés aux virages et aux raccords intermédiaires ; ils ne sont pas recréés aux extrémités.
 - En mode construction, le **gros carré bleu de sélection** est masqué : la route apparaît directement sous le curseur, comme dans la vidéo.
 - Le carré reste disponible pour la **gomme** et le **rond-point**, où il sert de repère de placement.
-- Build reconstruit et vérifié : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`.
+- Build reconstruit et vérifié : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`.
 
 ### 11. Choix hebdomadaires fidèles à Mini Motorways
 
@@ -414,7 +414,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`
+- **Build actuel** : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 
