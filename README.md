@@ -168,6 +168,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 | Fin octobre 2026 | Fondations Rojo, grille 18 × 18, pathfinding, serveur, client, refonte visuelle claire et française |
 | 04/11/2026 | Sauvegarde d'un état issu d'une refonte plus lourde, finalement écartée |
 | 07/11/2026 | Retour au prototype stable 1.3.0, page GitHub complète, routes diagonales lissées, dépôt public |
+| 08/11/2026 | Extrémités de route plates, suppression des disques ronds aux fins de route |
 
 ### 1. Fondations techniques
 
@@ -268,7 +269,8 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - `1b74f25` : page GitHub publique ;
   - `e898c12` : historique complet du projet ;
   - `c5b2ffe` : extrémités de route plates, sans ronds ;
-  - `f74b7f9` : suppression des disques de jonction aux extrémités.
+  - `f74b7f9` : suppression des disques de jonction aux extrémités ;
+  - `0519f67` : détails des extrémités plates dans le README.
 
 ### 9. État actuel
 
