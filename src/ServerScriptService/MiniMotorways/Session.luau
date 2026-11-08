@@ -656,6 +656,25 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 		return part
 	end
 
+	-- Extrémité ovale : le grand axe reste perpendiculaire à la route, le
+	-- petit axe suit la route. On obtient une fin arrondie sans gros disque.
+	local function addOval(name, height, alongDiameter, acrossDiameter, center, direction, partColor)
+		local unit = direction.Unit
+		local across = Vector3.new(unit.Z, 0, -unit.X)
+		local size = Vector3.new(height, alongDiameter, acrossDiameter)
+		local part = makePart({
+			Name = name,
+			Parent = self.world.Roads,
+			Shape = Enum.PartType.Cylinder,
+			Size = size,
+			CFrame = CFrame.fromMatrix(center, Vector3.new(0, 1, 0), unit, across),
+			Color = partColor,
+		})
+		reveal(part, size)
+		table.insert(parts, part)
+		return part
+	end
+
 	local function addDiagonalSegment(name, width, height, centerY, partColor, dx, dz)
 		local from = Grid.center(self.origin, x, y, 0)
 		local to = Grid.center(self.origin, x + dx, y + dz, 0)
@@ -944,8 +963,8 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 	addTileLayer("Road", roadWidth, topHeight, topCenterY, color)
 
 	-- Extrémité : on prolonge la route jusqu'au bord de la case avec une
-	-- coupe droite. Pas de disque ni de demi-cercle : l'utilisateur veut des
-	-- fins de route plates, sans gros « ronds » aux extrémités.
+	-- boîte plate, puis on ajoute un capuchon ovale. Le bout est arrondi
+	-- comme dans la vidéo, sans recréer les gros disques ronds d'origine.
 	if #neighborDirs == 1 and #diagonalDirs == 0 then
 		local dir = neighborDirs[1]
 		local direction = Vector3.new(dir[1], 0, dir[2])
@@ -970,6 +989,38 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 			"RoadEnd",
 			Vector3.new(roadWidth, topHeight, capLength),
 			capCenter + Vector3.new(0, topCenterY + layerLift, 0),
+			direction,
+			color
+		)
+
+		-- Fin ovale : les boîtes plates assurent la continuité, ces ovales
+		-- arrondissent seulement le bout. Le petit axe suit la route pour
+		-- éviter l'effet « gros rond ».
+		local endPoint = center + direction * capLength
+		addOval(
+			"RoadOutlineOval",
+			outlineHeight,
+			edgeWidth * 0.62,
+			edgeWidth,
+			endPoint + Vector3.new(0, outlineCenterY + layerLift + 0.004, 0),
+			direction,
+			edgeColor
+		)
+		addOval(
+			"RoadContourOval",
+			contourHeight,
+			contourWidth * 0.62,
+			contourWidth,
+			endPoint + Vector3.new(0, contourCenterY + layerLift + 0.004, 0),
+			direction,
+			contourColor
+		)
+		addOval(
+			"RoadOval",
+			topHeight,
+			roadWidth * 0.62,
+			roadWidth,
+			endPoint + Vector3.new(0, topCenterY + layerLift + 0.004, 0),
 			direction,
 			color
 		)
@@ -1060,6 +1111,26 @@ function Session:addRibbonDisk(name, size, center, color)
 		Shape = Enum.PartType.Cylinder,
 		Size = size,
 		CFrame = CFrame.new(center) * CFrame.Angles(0, 0, math.rad(90)),
+		Color = color,
+		CastShadow = false,
+	})
+	table.insert(self.roadRibbons, part)
+end
+
+-- Extrémité ovale du ruban : un cylindre aplati dont le grand axe est
+-- perpendiculaire à la route. Il remplace le gros disque rond d'origine.
+function Session:addRibbonOval(name, height, alongDiameter, acrossDiameter, center, direction, color)
+	if not direction or direction.Magnitude < 0.001 then
+		return
+	end
+	local unit = direction.Unit
+	local across = Vector3.new(unit.Z, 0, -unit.X)
+	local part = makePart({
+		Name = name,
+		Parent = self.world.Roads,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(height, alongDiameter, acrossDiameter),
+		CFrame = CFrame.fromMatrix(center, Vector3.new(0, 1, 0), unit, across),
 		Color = color,
 		CastShadow = false,
 	})
@@ -1212,7 +1283,8 @@ function Session:createRibbonForPath(path, pathIndex)
 		local topHeight = bridge and 0.22 or 0.20
 		local topY = bridge and 0.32 or 0.24
 		-- Aux vraies extrémités, le disque de jonction formerait encore un
-		-- gros rond. On le saute : l'extension plate ajoutée plus bas suffit.
+		-- gros rond. On le saute : l'extension plate et son capuchon ovale
+		-- ajoutés plus bas suffisent.
 		local flatStart = i == 1
 			and not self:hasOtherRoadNeighbor(path[1], path[2])
 		local flatEnd = i == #points
@@ -1235,8 +1307,9 @@ function Session:createRibbonForPath(path, pathIndex)
 	end
 
 	-- Extrémités du ruban : on prolonge le dernier segment jusqu'au bord de
-	-- la case avec une coupe droite, au lieu d'un gros disque rond. On omet
-	-- cette extension quand la case est déjà reliée à une autre route.
+	-- la case, puis on ajoute un capuchon ovale. La boîte plate assure la
+	-- continuité, l'ovale arrondit le bout sans recréer un gros disque rond.
+	-- On omet cette extension quand la case est déjà reliée à une autre route.
 	local function addCap(point, direction, bridge, suffix)
 		if not direction or direction.Magnitude < 0.001 then
 			return
@@ -1264,6 +1337,28 @@ function Session:createRibbonForPath(path, pathIndex)
 			"RoadRibbonTopEnd" .. pathIndex .. suffix,
 			Vector3.new(topWidth, topHeight, capLength),
 			capCenter + Vector3.new(0, topY + yOffset + ribbonLift, 0),
+			unit,
+			topColor
+		)
+
+		-- Capuchons ovales posés sur le bout des extensions plates. Le petit
+		-- axe suit la route : la fin est arrondie mais reste une ellipse.
+		local endPoint = point + unit * capLength
+		self:addRibbonOval(
+			"RoadRibbonEdgeOval" .. pathIndex .. suffix,
+			edgeHeight,
+			edgeWidth * 0.62,
+			edgeWidth,
+			endPoint + Vector3.new(0, edgeY + yOffset + ribbonLift + 0.004, 0),
+			unit,
+			edgeColor
+		)
+		self:addRibbonOval(
+			"RoadRibbonTopOval" .. pathIndex .. suffix,
+			topHeight,
+			topWidth * 0.62,
+			topWidth,
+			endPoint + Vector3.new(0, topY + yOffset + ribbonLift + 0.004, 0),
 			unit,
 			topColor
 		)

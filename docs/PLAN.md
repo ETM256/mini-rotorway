@@ -25,12 +25,12 @@
 
 - [x] `Main.client.luau` : câblage lobby/HUD/caméra/input
 - [x] `CameraController.luau` : caméra responsive, zoom molette, déplacement clic milieu
-- [x] `InputController.luau` : dessin souris/tactile + fantôme + outil rond-point
+- [x] `InputController.luau` : dessin souris/tactile + curseur + outil rond-point
 - [x] Tracé en diagonale : le geste avance simultanément sur X et Y et dessine
   des segments à 45° au lieu de fabriquer un escalier de cases. La carte garde
-  sa grille 18 × 18, mais le carré de visée est agrandi et la détection
-  favorise les diagonales près des coins. Un seul carré de survol suit la
-  souris, sans pad de choix.
+  sa grille 18 × 18, mais la détection est agrandie et favorise les diagonales
+  près des coins. En construction, le gros carré de visée est masqué : la route
+  apparaît directement sous le curseur, sans pad de choix.
 - [x] `UI/Theme.luau` : palette claire et composants
 - [x] `UI/MapPreview.luau` : aperçus circulaires clairs, eau et parcs
 - [x] `UI/Lobby.luau` : menu clair, 6 cartes, garage, stats, records
@@ -57,9 +57,9 @@
    colorés.
 5. Dessiner une route entre une maison et un bâtiment de la même couleur :
    vérifier le trait blanc de chaque côté, les bords droits, les jonctions
-   arrondies et l'extrémité arrondie de la route. Un seul carré de survol doit
-   suivre la souris, sans cases voisines ni pad autour du curseur. Le carré de
-   visée déborde un peu de la case pour faciliter le placement.
+   arrondies et l'extrémité **ovale** de la route. En construction, aucun gros
+   carré bleu ne doit suivre la souris : la route apparaît directement. Le
+   carré de repère reste visible pour la gomme et le rond-point.
 6. Glisser à 45° : la route doit se prolonger en diagonale, rester aussi lisse
    qu'une ligne droite, garder des jonctions ovales sans triangle et être
    empruntée par une voiture.
@@ -148,9 +148,9 @@
   ruban garde la même largeur que l'horizontal ; les formes arrondies ne
   restent qu'aux virages, extrémités et jonctions.
 - [x] Visée des routes agrandie : la carte reste en 18 × 18 cases de 4 studs,
-  mais le carré de survol est plus grand que la case et la détection accentue
-  les diagonales près des coins. Un seul carré suit le curseur ; aucun pad ni
-  case de choix ne l'entoure.
+  mais la détection accentue les diagonales près des coins. En construction,
+  le carré de survol est masqué ; il ne reste visible que pour la gomme et le
+  rond-point. Aucun pad ni case de choix n'entoure le curseur.
 - [x] Presqu'île de Los Angeles recoupée à ras du littoral : le raccord au
   continent est net, sans gros capuchon rond, et seul le bout côté eau reste
   arrondi.

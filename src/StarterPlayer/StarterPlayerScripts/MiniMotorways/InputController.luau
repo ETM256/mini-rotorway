@@ -216,6 +216,9 @@ end
 function InputController:setTool(tool)
 	self.tool = tool
 	self.ghost.Color = tool == "erase" and Config.Colors.Danger or Config.Colors.Teal
+	if tool == "build" then
+		self.ghost.Transparency = 1
+	end
 end
 
 function InputController:cellAt(position)
@@ -409,6 +412,13 @@ end
 
 function InputController:updateGhost()
 	if not self.enabled then
+		self.ghost.Transparency = 1
+		return
+	end
+
+	-- En mode construction, on cache complètement le gros carré de visée :
+	-- la route qui apparaît sous le curseur suffit, comme dans la vidéo.
+	if self.tool == "build" then
 		self.ghost.Transparency = 1
 		return
 	end

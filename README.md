@@ -170,6 +170,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 | 07/11/2026 | Retour au prototype stable 1.3.0, page GitHub complète, routes diagonales lissées, dépôt public |
 | 08/11/2026 | Extrémités de route plates, suppression des disques ronds aux fins de route |
 | 08/11/2026 | Choix hebdomadaires fidèles à Mini Motorways : routes + outil spécial, ou lot de routes |
+| 08/11/2026 | Extrémités de route ovales et suppression du gros carré bleu pendant la construction |
 
 ### 1. Fondations techniques
 
@@ -196,7 +197,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - `Main.client.luau` : câblage du lobby, du HUD, de la caméra et des entrées.
 - `CameraController.luau` : caméra de dessus quasi orthographique (FOV 20), zoom à la molette et déplacement au clic milieu.
-- `InputController.luau` : dessin à la souris et au doigt, fantôme de visée, gomme et outil rond-point.
+- `InputController.luau` : dessin à la souris et au doigt, gomme et outil rond-point. En construction, le gros carré de visée est masqué : la route apparaît directement sous le curseur.
 - `UI/Theme.luau` : palette claire et composants réutilisables.
 - `UI/MapPreview.luau` : aperçus circulaires des cartes avec eau, parcs et tracé de route.
 - `UI/Lobby.luau` : menu, 6 cartes, garage, statistiques et records.
@@ -211,7 +212,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Presqu'îles sèches et côtes retravaillées, avec raccord terre net.
 - Lumière adoucie : `Brightness = 0.8`, ambiance beige plus sombre et exposition réduite.
 - Bordure beige hachurée avec étiquettes verticales turquoise.
-- Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités plates.
+- Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités ovales.
 - Bâtiments façon icônes : cartes plates à coins arrondis, liseré blanc, ombre douce, allée, toit à deux teintes, cheminées et épingles de destination.
 - Petits arbres vectoriels dans les parcs.
 - Voitures avec contour et toit clair pour rester lisibles sur les routes sombres.
@@ -238,11 +239,11 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - un liseré blanc ;
   - des virages arrondis ;
   - des jonctions en disque ;
-  - des **extrémités plates**, sans gros ronds aux fins de route ;
+  - des **extrémités ovales**, avec un capuchon elliptique plus large que long, sans gros disque rond ;
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `C9461522...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `A2989511...`.
 
 ### 7. Retour à la base stable
 
@@ -278,20 +279,24 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 - Version **1.3.0**, prototype jouable.
 - **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`.
-- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités plates, ponts, ronds-points, semaines et records.
+- Build actuel : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`.
+- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités ovales, ponts, ronds-points, semaines et records.
 - Choix hebdomadaires : **+1 pont/rond-point +20 routes**, ou **+30 / +40 routes**.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
 - Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
 
-### 10. Extrémités plates
+### 10. Extrémités ovales et curseur de construction
 
-- Les gros **ronds aux fins de route** ont été supprimés, à la demande de l'utilisateur.
-- Les capuchons ronds du ruban et des cases sont remplacés par des **extensions droites** qui vont jusqu'au bord de la case.
-- Les **disques de jonction** ne sont plus créés aux extrémités : ils restent uniquement aux virages et aux raccords intermédiaires.
-- La coupe est **plate**, dans l'axe de la route : plus de disque ni de demi-cercle aux extrémités.
-- Les jonctions et les virages conservent leurs formes arrondies ; seules les vraies fins de route sont plates.
-- Build reconstruit et vérifié : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`.
+- Les **gros disques ronds** aux fins de route restent supprimés.
+- Les extensions plates vont jusqu'au bord de la case pour assurer la continuité.
+- Un **capuchon ovale** est ajouté par-dessus, sur le ruban et sur la case :
+  - grand axe **perpendiculaire** à la route ;
+  - petit axe **le long** de la route, environ **0,62 × la largeur** ;
+  - résultat : une fin arrondie en ellipse, sans effet « grosse bille ».
+- Les **disques de jonction** restent réservés aux virages et aux raccords intermédiaires ; ils ne sont pas recréés aux extrémités.
+- En mode construction, le **gros carré bleu de sélection** est masqué : la route apparaît directement sous le curseur, comme dans la vidéo.
+- Le carré reste disponible pour la **gomme** et le **rond-point**, où il sert de repère de placement.
+- Build reconstruit et vérifié : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`.
 
 ### 11. Choix hebdomadaires fidèles à Mini Motorways
 
@@ -338,7 +343,7 @@ mini-rotorway/
    └─ StarterPlayer/StarterPlayerScripts/MiniMotorways/
       ├─ Main.client.luau        ← câblage client
       ├─ CameraController.luau   ← caméra responsive au-dessus de la ville
-      ├─ InputController.luau    ← dessin des routes + fantôme
+      ├─ InputController.luau    ← dessin des routes + curseur
       └─ UI/
          ├─ Theme.luau           ← palette et constructeurs d'UI
          ├─ MapPreview.luau      ← aperçus circulaires des cartes
@@ -408,7 +413,7 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 ## État du prototype
 
 - **Version** : 1.3.0
-- **Build actuel** : `C9461522D5FC48E72D96AA9A50C16C2B30113323855EACE575D7FA9F2B84565B`
+- **Build actuel** : `A2989511E4855A24404E7C24637AE2B452C691D50400183DB684648CF05EC50D`
 - **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
 - **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
 
