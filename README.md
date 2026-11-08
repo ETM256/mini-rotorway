@@ -265,7 +265,9 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - `5c515f9` : page GitHub et prototype jouable ;
   - `7479921` : ruban de route lissé ;
   - `484c867` : reconstruction différée et robustesse ;
-  - `1b74f25` : page GitHub publique.
+  - `1b74f25` : page GitHub publique ;
+  - `e898c12` : historique complet du projet ;
+  - `c5b2ffe` : extrémités de route plates, sans ronds.
 
 ### 9. État actuel
 
