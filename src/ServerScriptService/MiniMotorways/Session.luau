@@ -17,9 +17,11 @@ local Maps = require(Shared.Maps)
 local Grid = require(Shared.Grid)
 local Pathfinding = require(Shared.Pathfinding)
 local Remotes = require(Shared.Remotes)
+local StoreConfig = require(Shared.StoreConfig)
 
 local WorldBuilder = require(script.Parent.WorldBuilder)
 local Profile = require(script.Parent.Profile)
+local StoreSystem = require(script.Parent.StoreSystem)
 
 local Session = {}
 Session.__index = Session
@@ -139,6 +141,45 @@ local function animateRoadPart(part, finalSize, delay)
 	}):Play()
 end
 
+-- Anime un Model entier autour de son WorldPivot. Sert à l'apparition d'un
+-- magasin et à sa transformation petit carré -> grand cercle. On passe par
+-- une NumberValue pour pouvoir tween une valeur puis appeler Model:ScaleTo.
+local function animateModelScale(model, fromScale, toScale, duration)
+	if not model or not model.ScaleTo then
+		return
+	end
+
+	model:ScaleTo(fromScale)
+	local value = Instance.new("NumberValue")
+	value.Name = "ScaleAnimation"
+	value.Value = fromScale
+
+	local connection
+	connection = value.Changed:Connect(function(scale)
+		if model.Parent then
+			model:ScaleTo(scale)
+		end
+	end)
+
+	local tween = TweenService:Create(
+		value,
+		TweenInfo.new(duration or 0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Value = toScale }
+	)
+	tween.Completed:Connect(function()
+		if connection then
+			connection:Disconnect()
+		end
+		if model.Parent then
+			model:ScaleTo(toScale)
+		end
+		value:Destroy()
+	end)
+
+	value.Parent = model
+	tween:Play()
+end
+
 function Session.new(player, mapId, worldIndex)
 	local map = Maps.getById(mapId) or Maps.all()[1]
 
@@ -183,20 +224,16 @@ function Session.new(player, mapId, worldIndex)
 	self.choice = nil
 
 	self.stateClock = 0
-	self.pairClock = Config.Game.FirstPairDelay
-	self.pairCount = 0
 	self.nextBuildingId = 1
 
 	self.world = WorldBuilder.build(self)
-	self:seedBuildings()
+
+	-- StoreSystem réutilise les bâtiments, les maisons et les voitures de
+	-- Session : un seul système, pas de doublon.
+	self.storeSystem = StoreSystem.new(self)
+	self.storeSystem:seed()
 
 	return self
-end
-
-function Session:seedBuildings()
-	for _ = 1, Config.Game.StartPairs do
-		self:spawnPair(true)
-	end
 end
 
 function Session:isFreeCell(x, y)
@@ -207,7 +244,7 @@ function Session:isFreeCell(x, y)
 	return not self.buildings[key] and not self.roads[key] and not Maps.isWater(self.map, x, y)
 end
 
-function Session:hasBuildableNeighbor(x, y)
+function Session:buildableNeighborCount(x, y)
 	local count = 0
 	for _, neighbor in ipairs(Grid.neighbors8(x, y)) do
 		local nx, ny = neighbor[1], neighbor[2]
@@ -218,7 +255,11 @@ function Session:hasBuildableNeighbor(x, y)
 			end
 		end
 	end
-	return count >= 2
+	return count
+end
+
+function Session:hasBuildableNeighbor(x, y)
+	return self:buildableNeighborCount(x, y) >= 2
 end
 
 function Session:findBuildingSpot(exclude, minDistance)
@@ -249,49 +290,35 @@ function Session:findBuildingSpot(exclude, minDistance)
 	return nil
 end
 
-function Session:spawnPair(initial)
-	if #self.houses >= Config.Game.MaxPairs then
-		return
-	end
-
-	for _ = 1, 8 do
-		local colorIndex = (self.pairCount % #COLORS) + 1
-		local destX, destY = self:findBuildingSpot(nil, 0)
-		if destX then
-			local houseX, houseY = self:findBuildingSpot({ destX, destY }, 5)
-			if houseX then
-				local destination = self:createBuilding("destination", destX, destY, colorIndex)
-				local house = self:createBuilding("house", houseX, houseY, colorIndex)
-				house.dest = self:findDestinationForHouse(house) or destination
-				house.timer = initial
-						and (Config.Game.FirstSpawnDelay + math.random() * 4)
-					or (2 + math.random() * 3)
-				self.pairCount += 1
-				return
-			end
-		end
-	end
-end
-
-function Session:createBuilding(kind, x, y, colorIndex)
-	local id = self.nextBuildingId
-	self.nextBuildingId += 1
-
+function Session:buildBuildingModel(kind, id, x, y, colorIndex, storeType, skipSpawnAnimation)
 	local palette = COLORS[colorIndex] or COLORS[1]
 	local color = palette.color
 	local baseColor = palette.base or color:Lerp(Config.Colors.Ink, 0.22)
 	local ink = Config.Colors.Ink
 	local white = Config.Colors.White
 	local isHouse = kind == "house"
+	local isStore = kind == "store"
+	local isLarge = isStore and storeType == "large"
 
 	local model = Instance.new("Model")
 	model.Name = kind .. "_" .. tostring(id)
+		.. (isStore and ("_" .. tostring(storeType or "small")) or "")
 
 	-- Les icônes sont volontairement plus larges que la case occupée, comme
 	-- dans la référence : elles débordent un peu sur la grille et sur la
 	-- route, mais la validation reste sur une seule case.
-	local width = isHouse and 5.2 or 6.4
-	local depth = isHouse and 4.8 or 6.4
+	local width, depth
+	if isHouse then
+		width, depth = 5.2, 4.8
+	elseif isLarge then
+		width = StoreConfig.Visual.LargeSize
+		depth = StoreConfig.Visual.LargeSize
+	else
+		width = StoreConfig.Visual.SmallSize
+		depth = StoreConfig.Visual.SmallSize
+	end
+	-- Rayon 0.17 = carte carrée à coins arrondis ; rayon 0.5 = cercle parfait.
+	local cardRadius = isLarge and 0.5 or 0.17
 	-- Les couches sont des cartes très fines, empilées avec un pas de 0.05
 	-- stud pour rester au-dessus des routes sans créer de faces coplanaires.
 	local cardH = 0.05
@@ -303,10 +330,12 @@ function Session:createBuilding(kind, x, y, colorIndex)
 	addRoundedCard(model, "ShadowSoft", center, width + 1.00, depth + 1.00, cardH, baseY - 0.150, Config.Colors.BuildingShadow, {
 		transparency = 0.82,
 		offset = Vector3.new(0.52, 0, 0.52),
+		radius = cardRadius,
 	})
 	addRoundedCard(model, "Shadow", center, width + 0.50, depth + 0.50, cardH, baseY - 0.100, Config.Colors.BuildingShadow, {
 		transparency = 0.68,
 		offset = Vector3.new(0.34, 0, 0.34),
+		radius = cardRadius,
 	})
 
 	-- Petit chemin blanc arrondi qui dépasse de la maison, comme les
@@ -338,18 +367,22 @@ function Session:createBuilding(kind, x, y, colorIndex)
 	-- Liseré blanc extérieur puis décalage coloré sombre : le contour de
 	-- l'icône reste net sur le sol crème.
 	addRoundedCard(model, "Outline", center, width + 0.38, depth + 0.38, cardH, baseY, white, {
-		radius = 0.17,
+		radius = cardRadius,
 	})
 	addRoundedCard(model, "Offset", center, width + 0.10, depth + 0.10, cardH, baseY + 0.050, baseColor:Lerp(ink, 0.30), {
 		offset = Vector3.new(0.18, 0, 0.18),
-		radius = 0.17,
+		radius = cardRadius,
 	})
 
 	local body
 	if isHouse then
-		body = addRoundedCard(model, "Body", center, width, depth, cardH, baseY + 0.100, baseColor)
+		body = addRoundedCard(model, "Body", center, width, depth, cardH, baseY + 0.100, baseColor, {
+			radius = cardRadius,
+		})
 	else
-		body = addRoundedCard(model, "Body", center, width, depth, cardH, baseY + 0.100, color)
+		body = addRoundedCard(model, "Body", center, width, depth, cardH, baseY + 0.100, color, {
+			radius = cardRadius,
+		})
 	end
 	model.PrimaryPart = body
 
@@ -388,56 +421,66 @@ function Session:createBuilding(kind, x, y, colorIndex)
 			})
 		end
 	else
-		-- Épingle blanche à pointe, posée au centre de la carte.
-		local pinY = baseY + 0.170
-		local pinRotation = CFrame.Angles(0, 0, math.rad(90))
+		-- Magasin minimaliste : toit plat, logo central, entrée sombre
+		-- tournée vers l'allée. Le grand magasin est un disque avec un
+		-- anneau blanc ; le petit est un carré à coins arrondis.
+		if isLarge then
+			addRoundedCard(model, "RoofRing", center, width * 0.78, depth * 0.78, cardH, baseY + 0.155, white, {
+				radius = 0.5,
+			})
+			addRoundedCard(model, "Roof", center, width * 0.66, depth * 0.66, cardH, baseY + 0.180, color, {
+				radius = 0.5,
+			})
+		else
+			addRoundedCard(model, "RoofRing", center, width * 0.64, depth * 0.64, cardH, baseY + 0.155, white, {
+				radius = 0.24,
+			})
+			addRoundedCard(model, "Roof", center, width * 0.54, depth * 0.54, cardH, baseY + 0.180, color, {
+				radius = 0.24,
+			})
+		end
+
+		-- Petit logo blanc, visible de loin sans masquer la couleur.
 		makePart({
-			Name = "PinTailShadow",
-			Parent = model,
-			Size = Vector3.new(0.92, cardH, 0.92),
-			CFrame = CFrame.new(center.X, pinY - 0.004, center.Z + 0.46) * CFrame.Angles(0, math.rad(45), 0),
-			Color = ink,
-			CastShadow = false,
-		})
-		makePart({
-			Name = "PinOutline",
+			Name = "Logo",
 			Parent = model,
 			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.06, 1.45, 1.45),
-			CFrame = CFrame.new(center.X, pinY, center.Z) * pinRotation,
-			Color = ink,
-			CastShadow = false,
-		})
-		makePart({
-			Name = "PinTail",
-			Parent = model,
-			Size = Vector3.new(0.70, cardH, 0.70),
-			CFrame = CFrame.new(center.X, pinY + 0.006, center.Z + 0.42) * CFrame.Angles(0, math.rad(45), 0),
+			Size = Vector3.new(0.06, 1.10, 1.10),
+			CFrame = CFrame.new(center.X, baseY + 0.215, center.Z) * CARD_CYLINDER_ROTATION,
 			Color = white,
 			CastShadow = false,
 		})
-		makePart({
-			Name = "Pin",
-			Parent = model,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.06, 1.15, 1.15),
-			CFrame = CFrame.new(center.X, pinY + 0.012, center.Z) * pinRotation,
-			Color = white,
-			CastShadow = false,
-		})
-		makePart({
-			Name = "PinDot",
-			Parent = model,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.06, 0.42, 0.42),
-			CFrame = CFrame.new(center.X, pinY + 0.030, center.Z) * pinRotation,
-			Color = ink,
-			CastShadow = false,
+
+		-- Entrée / accès routier : une barre sombre sur le côté de l'allée.
+		addRoundedCard(model, "Entrance", center, width * 0.30, 0.95, cardH + 0.006, baseY + 0.190, ink, {
+			angle = driveAngle,
+			offset = Vector3.new(0, 0, width * 0.40),
+			radius = 0.28,
 		})
 	end
 
 	model.Parent = self.world.Buildings
+	model.WorldPivot = CFrame.new(center.Position)
+	model:SetAttribute("BuildingKind", kind)
+	model:SetAttribute("BuildingId", id)
+	model:SetAttribute("ColorIndex", colorIndex)
 
+	if isStore then
+		model:SetAttribute("StoreType", storeType or "small")
+		if not skipSpawnAnimation then
+			animateModelScale(model, 0.65, 1, StoreConfig.Visual.SpawnAnimationDuration)
+		end
+	end
+
+	return model
+end
+
+function Session:createBuilding(kind, x, y, colorIndex, storeType)
+	local id = self.nextBuildingId
+	self.nextBuildingId += 1
+
+	local model = self:buildBuildingModel(kind, id, x, y, colorIndex, storeType, false)
+	local palette = COLORS[colorIndex] or COLORS[1]
 	local building = {
 		id = id,
 		kind = kind,
@@ -445,13 +488,16 @@ function Session:createBuilding(kind, x, y, colorIndex)
 		y = y,
 		key = Grid.key(x, y),
 		colorIndex = colorIndex,
-		color = color,
+		color = palette.color,
 		model = model,
 	}
+	if kind == "store" then
+		building.storeType = storeType or "small"
+	end
 
 	self.buildings[building.key] = building
 	table.insert(self.buildingList, building)
-	if isHouse then
+	if kind == "house" then
 		table.insert(self.houses, building)
 	else
 		table.insert(self.destinations, building)
@@ -460,7 +506,53 @@ function Session:createBuilding(kind, x, y, colorIndex)
 	return building
 end
 
-function Session:findDestinationForHouse(house)
+function Session:replaceStoreModel(store)
+	if not store or not self.world then
+		return
+	end
+
+	local oldModel = store.model
+	if oldModel then
+		for _, descendant in ipairs(oldModel:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				TweenService:Create(
+					descendant,
+					TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ Transparency = 1 }
+				):Play()
+			end
+		end
+		task.delay(0.24, function()
+			if oldModel.Parent then
+				oldModel:Destroy()
+			end
+		end)
+	end
+
+	local newModel = self:buildBuildingModel(
+		"store",
+		store.id,
+		store.x,
+		store.y,
+		store.colorIndex,
+		"large",
+		true
+	)
+	store.model = newModel
+	animateModelScale(
+		newModel,
+		StoreConfig.Visual.EvolutionStartScale,
+		1,
+		StoreConfig.Visual.EvolutionDuration
+	)
+	self:destinationPulse(store)
+end
+
+function Session:findDestinationForHouse(house, requireAvailable)
+	if self.storeSystem then
+		return self.storeSystem:findDestination(house, requireAvailable)
+	end
+
 	local best = nil
 	local bestDistance = math.huge
 	for _, destination in ipairs(self.destinations) do
@@ -1680,20 +1772,28 @@ function Session:trySpawnCar(house)
 		return
 	end
 
-	local destination = house.dest
+	-- Une voiture ne part que s'il reste une demande réellement disponible
+	-- dans un magasin de sa couleur. La demande est réservée immédiatement :
+	-- deux voitures ne peuvent donc jamais servir le même pin.
+	local destination = self:findDestinationForHouse(house, true)
 	if not destination then
-		destination = self:findDestinationForHouse(house)
-		house.dest = destination
-	end
-	if not destination then
-		house.timer = 2
+		house.dest = nil
+		house.timer = StoreConfig.Demand.NoDemandRetry
 		return
 	end
+	local demandId = self.storeSystem and self.storeSystem:claimDemand(destination)
+	if not demandId then
+		house.timer = StoreConfig.Demand.NoDemandRetry
+		return
+	end
+	house.dest = destination
 
 	local spot = self:parkingSpot(house)
 	local car = {
 		house = house,
 		dest = destination,
+		demandId = demandId,
+		claim = true,
 		state = "out",
 		path = nil,
 		index = 2,
@@ -1785,11 +1885,25 @@ end
 
 function Session:completeLeg(car)
 	if car.state == "out" then
-		self.score += Config.Game.DeliveryScore
-		self.satisfaction = math.min(
-			Config.Traffic.SatisfactionMax,
-			self.satisfaction + Config.Game.DeliverySatisfaction
-		)
+		local delivered = false
+		if car.dest and car.demandId and self.storeSystem then
+			delivered = self.storeSystem:consumeDemand(car.dest, car.demandId)
+		end
+		car.demandId = nil
+		car.claim = false
+
+		-- On ne marque des points que si une demande a réellement été
+		-- consommée. Une voiture qui arrive après coup ne peut pas voler le
+		-- pin d'une autre.
+		if delivered then
+			self.score += Config.Game.DeliveryScore
+			self.satisfaction = math.min(
+				Config.Traffic.SatisfactionMax,
+				self.satisfaction + Config.Game.DeliverySatisfaction
+			)
+			self:destinationPulse(car.dest)
+		end
+
 		car.state = "back"
 
 		local reversed = {}
@@ -1804,7 +1918,6 @@ function Session:completeLeg(car)
 		car.retry = 0
 		car.roadVersion = self.roadVersion
 
-		self:destinationPulse(car.dest)
 		return false
 	end
 
@@ -1823,6 +1936,18 @@ function Session:updateCar(car, dt)
 		end
 		car.blocked = true
 		car.waitTime += dt
+
+		-- Si aucune route n'existe après le délai de réservation, on libère
+		-- la demande et on retire la voiture. Elle repartira plus tard.
+		if car.claim and car.waitTime >= StoreConfig.Demand.ClaimTimeout then
+			if self.storeSystem and car.dest and car.demandId then
+				self.storeSystem:releaseClaim(car.dest, car.demandId)
+			end
+			car.claim = false
+			car.demandId = nil
+			car.dest = nil
+			return true
+		end
 		return false
 	end
 
@@ -1890,6 +2015,11 @@ function Session:updateCar(car, dt)
 end
 
 function Session:retireCar(car)
+	if car.claim and car.dest and car.demandId and self.storeSystem then
+		self.storeSystem:releaseClaim(car.dest, car.demandId)
+		car.claim = false
+		car.demandId = nil
+	end
 	if car.part then
 		car.part:Destroy()
 		car.part = nil
@@ -1913,16 +2043,18 @@ function Session:destinationPulse(destination)
 	ring.CanCollide = false
 	ring.CanQuery = false
 	ring.CanTouch = false
+	local startSize = destination.storeType == "large" and 4.5 or 3.2
+	local endSize = destination.storeType == "large" and 10.5 or 7.5
 	ring.Material = Enum.Material.Neon
 	ring.Color = destination.color
 	ring.Transparency = 0.35
-	ring.Size = Vector3.new(0.1, 3.2, 3.2)
+	ring.Size = Vector3.new(0.1, startSize, startSize)
 	ring.CFrame = CFrame.new(Grid.center(self.origin, destination.x, destination.y, 0.35))
 		* CFrame.Angles(0, 0, math.rad(90))
 	ring.Parent = self.world.FX
 
 	TweenService:Create(ring, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Size = Vector3.new(0.1, 7.5, 7.5),
+		Size = Vector3.new(0.1, endSize, endSize),
 		Transparency = 1,
 	}):Play()
 
@@ -1941,6 +2073,9 @@ function Session:updateSatisfaction(dt)
 		if car.path and car.waitTime >= Config.Traffic.StuckAfter then
 			drain += Config.Traffic.DrainPerStuckCar
 		end
+	end
+	if self.storeSystem then
+		drain += self.storeSystem:getOverloadDrain()
 	end
 
 	if drain > 0 then
@@ -2070,10 +2205,11 @@ function Session:update(dt)
 		return
 	end
 
-	self.pairClock -= dt
-	if self.pairClock <= 0 and #self.houses < Config.Game.MaxPairs then
-		self.pairClock = Config.Game.PairInterval
-		self:spawnPair(false)
+	-- Apparition des magasins, génération des demandes, surcharge,
+	-- évolution et ajout périodique de maisons. Le StoreSystem utilise le dt
+	-- simulé, donc la vitesse de jeu accélère aussi son rythme.
+	if self.storeSystem then
+		self.storeSystem:update(dt)
 	end
 
 	for _, house in ipairs(self.houses) do
@@ -2119,6 +2255,7 @@ function Session:sendState()
 		over = self.over,
 		houses = #self.houses,
 		destinations = #self.destinations,
+		largeStores = self.storeSystem and self.storeSystem.largeCount or 0,
 		cars = #self.cars,
 	})
 end
@@ -2140,7 +2277,10 @@ function Session:start()
 	})
 
 	self:sendState()
-	self:toast("Tracez des routes entre les maisons et les bâtiments de la même couleur.")
+	if self.storeSystem then
+		self.storeSystem:broadcast()
+	end
+	self:toast("Reliez les maisons aux magasins de la même couleur. Les pastilles au-dessus d'un magasin sont ses demandes.")
 end
 
 function Session:setPaused(value)
@@ -2179,6 +2319,10 @@ function Session:destroy()
 	self.running = false
 	self.over = true
 	self.paused = false
+	if self.storeSystem then
+		self.storeSystem:destroy()
+		self.storeSystem = nil
+	end
 	if self.world and self.world.folder then
 		self.world.folder:Destroy()
 	end

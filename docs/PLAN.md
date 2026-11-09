@@ -19,6 +19,7 @@
 - [x] Une ville isolée par joueur
 - [x] Validation serveur des routes et du budget
 - [x] Livraisons, retour des voitures, recalcul de chemin
+- [x] `StoreSystem.luau` : magasins progressifs, placement validé, couleurs uniques, demandes avec identifiants, surcharge et évolution
 - [x] Jauge de circulation et game over
 
 ## 3. Client
@@ -26,6 +27,7 @@
 - [x] `Main.client.luau` : câblage lobby/HUD/caméra/input
 - [x] `CameraController.luau` : caméra responsive, zoom molette, déplacement clic milieu
 - [x] `InputController.luau` : dessin souris/tactile + curseur + outil rond-point
+- [x] `StoreVisualController.luau` : pins `BillboardGui`, animations d'apparition/disparition, couleurs et compte à rebours de surcharge
 - [x] Tracé en diagonale : le geste avance simultanément sur X et Y et dessine
   des segments à 45° au lieu de fabriquer un escalier de cases. La carte garde
   sa grille 18 × 18, mais la détection est agrandie et favorise les diagonales
@@ -43,7 +45,7 @@
 
 - [x] Build Rojo (`MiniMotorwaysRBX.rbxlx`)
 - [x] Conversion des `Source` en `ProtectedString`
-- [x] Vérification des classes : 1 `Script`, 1 `LocalScript`, 14 `ModuleScript`
+- [x] Vérification des classes : 1 `Script`, 1 `LocalScript`, 17 `ModuleScript`
 - [x] Parse Luau de tous les fichiers
 - [ ] Test manuel dans Studio (à faire par l'utilisateur)
 
@@ -80,6 +82,26 @@
 14. Laisser la jauge tomber à 0 et vérifier l'écran de fin + record.
 15. Rejouer, changer de carte, revenir au menu.
 16. Tester en portrait (mobile) et en paysage.
+
+### 5.1 Test manuel des magasins
+
+1. Lancer une partie : **un seul magasin** doit apparaître, avec **trois maisons** de sa couleur.
+2. Vérifier le petit magasin : carré à coins arrondis, toit plat, liseré blanc, logo et entrée sombre côté allée.
+3. Attendre 5 à 9 secondes : une première **pastille de demande** colorée apparaît au-dessus du magasin.
+4. Relier une maison de la même couleur au magasin : la voiture part, le pin disparaît à l'arrivée et le score augmente.
+5. Vérifier qu'une deuxième voiture ne peut pas consommer le même pin pendant qu'il est réservé.
+6. Laisser les demandes s'accumuler : le petit magasin doit plafonner à **6 pins**.
+7. À capacité, vérifier l'**alerte** et le compte à rebours de 12 secondes au-dessus du magasin.
+8. Laisser le compte à rebours atteindre zéro : le magasin devient critique et la jauge de circulation baisse.
+9. Livrer une demande : l'alerte doit disparaître et le compteur repartir à 12 s si le magasin se remplit à nouveau.
+10. Attendre l'évolution d'un petit magasin (âge minimal 95 s, au moins 3 livraisons) : transition fluide carré → cercle, même couleur, même position.
+11. Vérifier que le grand magasin accepte **8 pins** et génère plus vite.
+12. Attendre le magasin suivant (100–120 s au début) : nouvelle couleur unique, environ deux nouvelles maisons.
+13. Vérifier qu'aucun magasin n'apparaît sur une route, dans l'eau, sur un bâtiment, collé à un autre magasin ou hors carte.
+14. Passer en vitesse ×3 : les magasins et les demandes doivent progresser plus vite en temps réel, sans changer le rythme en temps simulé.
+15. Mettre en pause et attendre un choix de semaine : le rythme des magasins doit être figé.
+16. Rejouer : les anciens pins doivent disparaître, une nouvelle partie doit repartir avec un seul magasin.
+17. Laisser tourner jusqu'à 8 magasins / 16 maisons et vérifier que le jeu reste fluide.
 
 ## 6. Correctifs UI récents
 
@@ -158,11 +180,11 @@
   le serveur accepte ces cases, les voitures suivent les segments et le rendu
   hybride reste continu aux jonctions.
 - [x] Apparition animée des routes : croissance et fondu à chaque case posée.
-- [x] Bâtiments colorés, épingles de destination et effet d'apparition.
+- [x] Bâtiments colorés, magasins carrés/circulaires, pins de demande et effets d'apparition.
 - [x] Icônes de bâtiments façon Mini Motorways : cartes plates à coins
   arrondis, liseré blanc, ombre douce décalée, allée blanche, toit à deux
-  teintes et cheminées pour les maisons, épingle blanche pour les
-  destinations.
+  teintes et cheminées pour les maisons. Magasins carrés à toit plat ou
+  circulaires, avec pins de demande colorés côté client.
 - [x] Petits arbres vectoriels dans les parcs : deux disques verts superposés
   par bosquet, comme les taches de végétation de la référence.
 - [x] Voitures avec contour et toit clair, lisibles sur les routes sombres.
@@ -184,3 +206,59 @@
 - Modes de jeu supplémentaires.
 - Classement global et statistiques.
 - Nom/identité originale avant publication publique.
+
+## 9. Système de magasins (09/11/2026)
+
+### Fichiers
+
+- **Créés** :
+  - `src/ReplicatedStorage/MiniMotorways/StoreConfig.luau`
+  - `src/ServerScriptService/MiniMotorways/StoreSystem.luau`
+  - `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/StoreVisualController.luau`
+- **Modifiés** :
+  - `src/ReplicatedStorage/MiniMotorways/Config.luau` : version 1.4.0, 8ᵉ couleur Orange, nettoyage des anciens réglages de paires.
+  - `src/ReplicatedStorage/MiniMotorways/Remotes.luau` : remote `StoreState`.
+  - `src/ServerScriptService/MiniMotorways/Session.luau` : intégration magasins/maisons/voitures, réservations, pins, évolution, surcharge et satisfaction.
+  - `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/Main.client.luau` : câblage de `StoreVisualController` et du remote `StoreState`.
+  - `README.md` et `docs/PLAN.md` : documentation, paramètres et checklist.
+
+### Fonctionnalités terminées
+
+- [x] Premier magasin immédiat + trois maisons de sa couleur.
+- [x] Apparition progressive selon le temps simulé, avec paliers 100–120 → 15–30 s.
+- [x] Placement semi-aléatoire validé (zones pondérées, eau/routes/bâtiments, distances minimales, espace constructible).
+- [x] Couleurs uniques centralisées ; 8 couleurs, 8 magasins maximum par défaut.
+- [x] Petit magasin carré et grand magasin circulaire, style minimaliste.
+- [x] Animation d'apparition, d'évolution et de demande.
+- [x] Capacités 6 / 8 configurables.
+- [x] Demande individuelle avec identifiant serveur et réservation anti-double-service.
+- [x] Suppression du pin exact à l'arrivée de la voiture.
+- [x] Alerte de capacité, compte à rebours, état critique et drainage de la satisfaction.
+- [x] Évolution après âge minimal, livraisons minimales et probabilité configurable.
+- [x] Ajout progressif de maisons par magasin.
+- [x] Synchronisation serveur → client via `StoreState` (0,2 s en cas de changement, 1,5 s de resynchronisation).
+- [x] Compilation des 19 fichiers Luau et build Rojo réussis.
+- [x] Build : `1980DEBB3E02DCB68B5EC319276A214AAA9ACCD858B8BB89CAAA59C0F704C014`.
+
+### Paramètres à ajuster en priorité
+
+| Paramètre | Valeur actuelle | Effet |
+| --- | --- | --- |
+| `StoreConfig.Spawn.Tiers` | 100–120 → 15–30 s | Vitesse d'apparition des magasins. |
+| `StoreConfig.Spawn.MaxStores` | 8 | Nombre de magasins. |
+| `StoreConfig.Spawn.MinStoreDistance` | 4,4 | Espacement des magasins. |
+| `StoreConfig.Demand.SmallInterval` | 11,5 s | Fréquence des demandes d'un petit magasin. |
+| `StoreConfig.Demand.LargeInterval` | 7,5 s | Fréquence des demandes d'un grand magasin. |
+| `StoreConfig.Demand.OverloadGrace` | 12 s | Tolérance avant l'état critique. |
+| `StoreConfig.Evolution.MinAge` | 95 s | Délai minimal avant évolution. |
+| `StoreConfig.Evolution.Chance` | 0,42 | Probabilité d'évolution. |
+| `StoreConfig.Houses.StartHouses` | 3 | Maisons du premier magasin. |
+| `StoreConfig.Houses.HousesPerStore` | 2 | Maisons par nouveau magasin. |
+
+### Points restants
+
+- [ ] Validation runtime complète dans Roblox Studio (checklist 5.1).
+- [ ] Ajuster les intervalles et la surcharge après une vraie partie de 10–15 minutes.
+- [ ] Vérifier visuellement la taille des pins et du compte à rebours sur mobile.
+- [ ] Tester le passage à 8 magasins et l'évolution de plusieurs grands magasins.
+- [ ] Décider si les couleurs doivent être réutilisées au-delà de 8 magasins ou si `MaxStores` doit rester strictement égal au nombre de couleurs.

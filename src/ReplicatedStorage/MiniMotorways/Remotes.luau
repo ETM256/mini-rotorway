@@ -46,6 +46,7 @@ function Remotes.setup()
 		"ResetRecords",
 		"GameStarted",
 		"State",
+		"StoreState",
 		"GameOver",
 		"Toast",
 		"Profile",

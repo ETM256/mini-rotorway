@@ -4,7 +4,7 @@
 > Projet public, jouable et open source, pour jouer, tester et faire évoluer le jeu à deux.
 
 ![Statut](https://img.shields.io/badge/statut-prototype-orange)
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 ![Roblox](https://img.shields.io/badge/Roblox-Studio-red)
 ![Luau](https://img.shields.io/badge/Luau-0%20erreur-brightgreen)
 ![Rojo](https://img.shields.io/badge/Rojo-7.7.1-purple)
@@ -22,6 +22,7 @@ Le projet contient **6 cartes** : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Sal
 - [Jouer à deux](#jouer-à-deux)
 - [Commandes](#commandes)
 - [Règles du jeu](#règles-du-jeu)
+- [Système de magasins](#système-de-magasins)
 - [Les 6 cartes](#les-6-cartes)
 - [Fonctionnalités](#fonctionnalités)
 - [Historique du projet](#historique-du-projet)
@@ -44,7 +45,7 @@ Le projet contient **6 cartes** : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Sal
 | Grille | 18 × 18 cases de 4 studs |
 | Cartes | 6 |
 | Durée d'une semaine | 60 secondes |
-| Version | 1.3.0 |
+| Version | 1.4.0 |
 | Statut | Prototype jouable |
 
 ---
@@ -112,14 +113,98 @@ La pause manuelle fige le temps mais **laisse la construction active** : on peut
 ## Règles du jeu
 
 - **Objectif** : livrer un maximum de trajets. Chaque livraison rapporte **1 point**.
-- **Couleurs** : une maison doit être reliée par un chemin continu à une destination de la **même couleur**.
+- **Couleurs** : une maison doit être reliée par un chemin continu au **magasin de la même couleur**. Une maison ne peut pas desservir un magasin d'une autre couleur.
+- **Magasins** : un magasin apparaît avec quelques maisons de sa couleur. De nouveaux magasins et de nouvelles couleurs arrivent progressivement ; la carte se remplit au fil de la partie.
+- **Demandes** : chaque magasin génère des **pastilles de demande** au-dessus de lui. Un petit magasin en stocke **6**, un grand magasin **8**. Une voiture réserve une demande, part de sa maison, la consomme à l'arrivée, puis revient.
+- **Évolution** : après un délai minimal et plusieurs livraisons, un petit magasin carré peut devenir un grand magasin circulaire. Il garde sa couleur, gagne de la capacité et génère ses demandes plus vite.
+- **Surcharge** : quand un magasin est plein, une alerte et un compte à rebours apparaissent. S'il reste saturé trop longtemps, il devient **critique** et draine la jauge de circulation. Une livraison le remet en état.
 - **Routes** : une route coûte **1 route** par case. Une case d'eau coûte **1 pont**.
 - **Ronds-points** : ils peuvent être posés sur une route existante comme repère de carrefour et sont récupérés si la route est effacée.
 - **Semaines** : une semaine dure **60 secondes**. À la fin de chaque semaine, la partie se met en pause et propose **deux améliorations**. Le joueur en choisit une, puis la semaine suivante commence.
 - **Améliorations** : chaque semaine, deux propositions. Les deux donnent des routes : **+20 routes** avec un outil spécial, ou **+30 / +40 routes** sans outil. Une seule proposition contient un **pont** ou un **rond-point**, comme dans Mini Motorways.
-- **Circulation** : si des voitures restent bloquées trop longtemps, la jauge de circulation baisse. À **0 %**, la partie est terminée.
-- **Budget de départ** : 20 routes, 1 pont, 0 rond-point, 3 paires maison/destination.
+- **Circulation** : si des voitures restent bloquées trop longtemps ou si un magasin critique n'est pas livré, la jauge de circulation baisse. À **0 %**, la partie est terminée.
+- **Budget de départ** : 20 routes, 1 pont, 0 rond-point, **1 magasin et 3 maisons de sa couleur**.
 - **Records** : le meilleur score de chaque carte est affiché dans le lobby et sauvegardé si les DataStores sont disponibles.
+
+---
+
+## Système de magasins
+
+Le système reprend le rythme de Mini Motorways : la partie commence avec **un seul magasin** et **trois maisons** de sa couleur, puis de nouveaux magasins apparaissent progressivement. Les intervalles sont calculés en **temps simulé** : accélérer la partie accélère aussi l'apparition, sans changer le rythme global.
+
+| Phase (temps simulé) | Intervalle entre deux magasins |
+| --- | --- |
+| 0–180 s | 100–120 s |
+| 180–360 s | 75–100 s |
+| 360–600 s | 55–75 s |
+| 600–900 s | 35–55 s |
+| 900–1200 s | 25–40 s |
+| 1200 s et + | 15–30 s |
+
+Avec `MaxStores = 8` et 8 couleurs uniques, les derniers paliers servent surtout si tu augmentes la limite de magasins. La difficulté de fin de partie vient aussi de l'accélération des demandes.
+
+### Apparence et couleurs
+
+- **Petit magasin** : carré à coins arrondis, toit plat, liseré blanc, logo central et entrée sombre côté allée. Taille visuelle **6,4 studs**.
+- **Grand magasin** : disque circulaire, anneau blanc, logo central et entrée. Taille visuelle **8,4 studs**.
+- Les deux utilisent la **même couleur** et le même langage graphique que les maisons : cartes plates, ombre douce, blanc cassé et palette pastel.
+- Chaque magasin reçoit une **couleur unique** parmi les 8 couleurs de `Config.HouseColors`. Les maisons de cette couleur ne desservent que lui.
+- La palette est centralisée : ajouter une couleur dans `Config.HouseColors` suffit pour le visuel, puis augmente `StoreConfig.Spawn.MaxStores` si tu veux plus de magasins uniques.
+
+### Placement semi-aléatoire
+
+Le serveur choisit une zone pondérée, puis vérifie que la case est :
+
+- dans la carte et hors de l'eau ;
+- libre de route, de bâtiment et de rond-point ;
+- assez éloignée des autres magasins (`MinStoreDistance`) et bâtiments (`MinBuildingDistance`) ;
+- entourée d'assez de cases constructibles pour tracer des routes (`MinBuildableNeighbors`).
+
+En cas d'échec, il réessaie un nombre borné de fois, puis parcourt la grille pour trouver un emplacement de repli. Aucune boucle infinie.
+
+### Demandes, réservations et surcharge
+
+- Chaque demande a un **identifiant serveur unique** (`magasin-demande`). Une voiture réserve un identifiant précis ; deux voitures ne peuvent jamais servir la même demande.
+- Le client reçoit la liste des identifiants et affiche un **pin coloré individuel** par demande. À l'arrivée, le pin exact est retiré avec une petite animation.
+- Capacités : **6** pour un petit magasin, **8** pour un grand.
+- Génération : environ **11,5 s** par demande pour un petit magasin, **7,5 s** pour un grand, avec une accélération progressive jusqu'à un facteur **0,70** après 10 minutes.
+- À capacité, une alerte et un compte à rebours de **12 s** apparaissent. À zéro, le magasin devient critique et draine la jauge de circulation. Une livraison annule l'alerte et remet le compteur à zéro.
+
+### Évolution
+
+- Un petit magasin peut évoluer après **95 s**, au moins **3 livraisons** et avec **42 %** de chance à chaque vérification (toutes les ~14 s).
+- Il conserve son identifiant, sa position et sa couleur. L'ancien modèle s'efface pendant que le nouveau cercle grandit : aucune duplication dans les listes de bâtiments.
+- Maximum **6 grands magasins** par défaut, pour éviter que toute la carte devienne circulaire trop vite.
+- Le grand magasin gagne **2 demandes de capacité** et génère plus vite.
+
+### Fichiers du système
+
+| Fichier | Rôle |
+| --- | --- |
+| `src/ReplicatedStorage/MiniMotorways/StoreConfig.luau` | Tous les réglages : palette, paliers, zones, capacités, demandes, surcharge, évolution, maisons, visuels. |
+| `src/ServerScriptService/MiniMotorways/StoreSystem.luau` | Apparition, placement, couleurs, demandes, réservations, surcharge, évolution et synchronisation. |
+| `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/StoreVisualController.luau` | Pins `BillboardGui`, animations, couleurs et compte à rebours côté client. |
+| `Session.luau` | Intégration aux bâtiments, maisons, voitures, pathfinding, satisfaction et boucle de jeu. |
+| `Remotes.luau` | Remote `StoreState` serveur → client. |
+
+### Réglages principaux
+
+| Paramètre | Valeur par défaut | Effet |
+| --- | --- | --- |
+| `StoreConfig.Spawn.MaxStores` | 8 | Nombre maximal de magasins. |
+| `StoreConfig.Spawn.Tiers` | 100–120 → 15–30 s | Rythme d'apparition par phase. |
+| `StoreConfig.Spawn.MinStoreDistance` | 4,4 cases | Distance minimale entre magasins. |
+| `StoreConfig.Demand.SmallCapacity` | 6 | Demandes en attente d'un petit magasin. |
+| `StoreConfig.Demand.LargeCapacity` | 8 | Demandes en attente d'un grand magasin. |
+| `StoreConfig.Demand.SmallInterval` | 11,5 s | Génération d'un petit magasin. |
+| `StoreConfig.Demand.LargeInterval` | 7,5 s | Génération d'un grand magasin. |
+| `StoreConfig.Demand.OverloadGrace` | 12 s | Délai avant qu'un magasin plein devienne critique. |
+| `StoreConfig.Evolution.MinAge` | 95 s | Âge minimal avant évolution. |
+| `StoreConfig.Evolution.Chance` | 0,42 | Probabilité par vérification. |
+| `StoreConfig.Houses.StartHouses` | 3 | Maisons créées avec le premier magasin. |
+| `StoreConfig.Houses.HousesPerStore` | 2 | Maisons ajoutées avec chaque nouveau magasin. |
+
+La checklist de test manuelle détaillée est dans [`docs/PLAN.md`](./docs/PLAN.md).
 
 ---
 
@@ -149,6 +234,11 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - [x] Serveur autoritaire : validation des routes, budget et état de la partie
 - [x] Pathfinding A* en 8 directions sur la grille 18 × 18
 - [x] Voitures qui partent, livrent, reviennent et recalculent leur chemin
+- [x] Magasins progressifs : 1 magasin + 3 maisons au départ, puis de nouvelles couleurs et de nouveaux magasins selon le temps simulé
+- [x] Petit magasin carré (capacité 6) et grand magasin circulaire (capacité 8), avec évolution animée et conservation de la couleur
+- [x] Demandes individuelles avec identifiants serveur, pins colorés animés, réservations anti-double-service et suppression à l'arrivée
+- [x] Placement semi-aléatoire validé : zones pondérées, distances minimales, routes/eau/bâtiments évités
+- [x] Surcharge des magasins : alerte, compte à rebours, état critique et drainage de la jauge de circulation
 - [x] Choix hebdomadaire fidèle au jeu : routes + outil spécial, ou lot de routes
 - [x] Jauge de circulation et game over
 - [x] Records par carte avec DataStore et fallback en mémoire
@@ -171,6 +261,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 | 08/11/2026 | Extrémités de route plates, suppression des disques ronds aux fins de route |
 | 08/11/2026 | Choix hebdomadaires fidèles à Mini Motorways : routes + outil spécial, ou lot de routes |
 | 08/11/2026 | Extrémités de route ovales et suppression du gros carré bleu pendant la construction |
+| 09/11/2026 | Système de magasins progressif : couleurs uniques, demandes, pins, surcharge et évolution petit → grand |
 
 ### 1. Fondations techniques
 
@@ -184,20 +275,22 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 ### 2. Serveur de jeu
 
 - `Bootstrap.server.luau` : remotes, profils, boucle de jeu et gestion des sessions.
-- `Session.luau` : routes, ponts, ronds-points, bâtiments, maisons, destinations, voitures, semaines, score et jauge de circulation.
+- `Session.luau` : routes, ponts, ronds-points, bâtiments, maisons, magasins, voitures, semaines, score et jauge de circulation.
+- `StoreSystem.luau` : apparition, demandes, réservations, surcharge, évolution et synchronisation des magasins.
 - `WorldBuilder.luau` : sol crème, eau menthe, parcs, grille, étiquettes et dossiers 3D.
 - `Profile.luau` : meilleurs scores via DataStore `MiniMotorwaysV1`, avec fallback en mémoire.
-- **Serveur autoritaire** : il valide les routes, le budget, les ponts et les ronds-points.
+- **Serveur autoritaire** : il valide les routes, le budget, les ponts, les ronds-points et les demandes.
 - Une **ville isolée par joueur** dans `Workspace.MMWorlds`.
 - Les voitures partent de la maison, livrent la destination, reviennent, et recalculent leur chemin si une route est supprimée.
 - Choix hebdomadaire : pause serveur, deux améliorations proposées, validation puis reprise.
-- Budget de départ : **20 routes, 1 pont, 0 rond-point, 3 paires maison/destination**.
+- Budget de départ : **20 routes, 1 pont, 0 rond-point, 1 magasin et 3 maisons de sa couleur**.
 
 ### 3. Client, caméra et interface
 
 - `Main.client.luau` : câblage du lobby, du HUD, de la caméra et des entrées.
 - `CameraController.luau` : caméra de dessus quasi orthographique (FOV 20), zoom à la molette et déplacement au clic milieu.
 - `InputController.luau` : dessin à la souris et au doigt, gomme et outil rond-point. En construction, le gros carré de visée est masqué : la route apparaît directement sous le curseur.
+- `StoreVisualController.luau` : pins de demande, animations et alertes de surcharge côté client.
 - `UI/Theme.luau` : palette claire et composants réutilisables.
 - `UI/MapPreview.luau` : aperçus circulaires des cartes avec eau, parcs et tracé de route.
 - `UI/Lobby.luau` : menu, 6 cartes, garage, statistiques et records.
@@ -213,7 +306,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Lumière adoucie : `Brightness = 0.8`, ambiance beige plus sombre et exposition réduite.
 - Bordure beige hachurée avec étiquettes verticales turquoise.
 - Routes **graphite `#262B2C`** avec fin liseré blanc, virages en arc et extrémités ovales.
-- Bâtiments façon icônes : cartes plates à coins arrondis, liseré blanc, ombre douce, allée, toit à deux teintes, cheminées et épingles de destination.
+- Bâtiments façon icônes : cartes plates à coins arrondis, liseré blanc, ombre douce, allée, toit à deux teintes et cheminées. Magasins à toit plat ou cercle, avec pins de demande côté client.
 - Petits arbres vectoriels dans les parcs.
 - Voitures avec contour et toit clair pour rester lisibles sur les routes sombres.
 
@@ -243,7 +336,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
   - des couleurs spécifiques pour les ponts.
 - La simulation reste sur la grille : pathfinding, voitures, budget et règles ne changent pas.
 - L'effacement reconstruit le ruban. Les reconstructions sont regroupées à la frame suivante (`roadRibbonsDirty`) pour éviter les ralentissements lors d'un effacement rapide.
-- Le build de référence avant le ruban était `5C571B3D...` ; le build actuel est `7DB81580...`.
+- Le build de référence avant le ruban était `5C571B3D...` ; le build de l'époque était `7DB81580...`.
 
 ### 7. Retour à la base stable
 
@@ -278,11 +371,12 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 
 ### 9. État actuel
 
-- Version **1.3.0**, prototype jouable.
-- **16 fichiers Luau**, 0 erreur de syntaxe.
-- Build actuel : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`.
-- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités ovales, ponts, ronds-points, semaines et records.
+- Version **1.4.0**, prototype jouable.
+- **19 fichiers Luau**, 0 erreur de syntaxe.
+- Build actuel : `1980DEBB3E02DCB68B5EC319276A214AAA9ACCD858B8BB89CAAA59C0F704C014`.
+- 6 cartes, grille 18 × 18, routes noires, diagonales lissées, extrémités ovales, ponts, ronds-points, semaines, magasins et records.
 - Choix hebdomadaires : **+1 pont/rond-point +20 routes**, ou **+30 / +40 routes**.
+- Magasins : 8 couleurs uniques, apparition progressive, demandes 6/8, évolution petit → grand et surcharge.
 - Le dépôt est public : **https://github.com/ETM256/mini-rotorway**.
 - Le test runtime complet dans Roblox Studio reste à refaire manuellement après les dernières modifications.
 
@@ -297,7 +391,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Les **disques de jonction** restent réservés aux virages et aux raccords intermédiaires ; ils ne sont pas recréés aux extrémités.
 - En mode construction, le **gros carré bleu de sélection** est masqué : la route apparaît directement sous le curseur, comme dans la vidéo.
 - Le carré reste disponible pour la **gomme** et le **rond-point**, où il sert de repère de placement.
-- Build reconstruit et vérifié : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`.
+- Build de l'époque reconstruit et vérifié : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`.
 
 ### 11. Choix hebdomadaires fidèles à Mini Motorways
 
@@ -314,6 +408,19 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - Sources :
   - [Mini Motorways — Wikipedia](https://en.wikipedia.org/wiki/Mini_Motorways)
   - [Upgrades — Mini Motorways Wiki](https://mini-motorways.fandom.com/wiki/Upgrades)
+
+### 12. Système de magasins et de demandes
+
+- **09/11/2026** : ajout du système complet de destinations inspiré de Mini Motorways.
+- `StoreConfig.luau` centralise les paliers d'apparition, les zones pondérées, les capacités 6/8, les intervalles de demandes, la surcharge, l'évolution, les maisons et les réglages visuels.
+- `StoreSystem.luau` gère le serveur : apparition, placement validé, couleurs uniques, demandes avec identifiants, réservations, surcharge, évolution et synchronisation `StoreState`.
+- `StoreVisualController.luau` affiche les pins côté client avec `BillboardGui`, anime leur apparition/disparition et le compte à rebours de surcharge.
+- `Session.luau` réutilise ses bâtiments, maisons, voitures et son pathfinding : un magasin est un bâtiment `kind = "store"`, les maisons gardent leur `colorIndex` et les voitures réservent une demande avant de partir.
+- Le pin blanc historique des destinations a été remplacé par les pins de demande côté client, pour éviter deux représentations concurrentes.
+- Les 8 couleurs de `Config.HouseColors` sont utilisées pour garantir une couleur unique par magasin ; `MaxStores = 8` par défaut.
+- La carte commence avec un magasin et trois maisons, puis chaque nouveau magasin ajoute environ deux maisons.
+- Le rythme dépend uniquement du temps simulé et non du nombre de bâtiments, pour éviter les explosions de difficulté.
+- Test runtime Studio encore à faire : voir la checklist dédiée dans `docs/PLAN.md`.
 
 ---
 
@@ -332,6 +439,7 @@ mini-rotorway/
 └─ src/
    ├─ ReplicatedStorage/MiniMotorways/
    │  ├─ Config.luau             ← réglages (grille, budget, semaines, couleurs)
+   │  ├─ StoreConfig.luau        ← tous les réglages des magasins et demandes
    │  ├─ Maps.luau               ← les 6 cartes + géographie/eau + aperçus
    │  ├─ Grid.luau               ← conversions case ↔ position 3D
    │  ├─ Pathfinding.luau        ← A* sur le réseau de routes
@@ -339,12 +447,14 @@ mini-rotorway/
    ├─ ServerScriptService/MiniMotorways/
    │  ├─ Bootstrap.server.luau   ← point d'entrée serveur
    │  ├─ Session.luau            ← simulation d'une ville
+   │  ├─ StoreSystem.luau        ← magasins, demandes, surcharge, évolution
    │  ├─ WorldBuilder.luau       ← sol, eau, grille, dossiers 3D
    │  └─ Profile.luau            ← DataStore / records
    └─ StarterPlayer/StarterPlayerScripts/MiniMotorways/
       ├─ Main.client.luau        ← câblage client
       ├─ CameraController.luau   ← caméra responsive au-dessus de la ville
       ├─ InputController.luau    ← dessin des routes + curseur
+      ├─ StoreVisualController.luau ← pins et alertes des magasins
       └─ UI/
          ├─ Theme.luau           ← palette et constructeurs d'UI
          ├─ MapPreview.luau      ← aperçus circulaires des cartes
@@ -361,6 +471,9 @@ mini-rotorway/
 - Le **ruban de route** ajouté dans `Session.luau` est une spline de Catmull-Rom qui passe par les centres des cases. Il est purement visuel : il recouvre les cases pour donner les courbes et les diagonales continues de la vidéo, tandis que la simulation, les voitures et le budget restent sur la grille.
 - Le choix hebdomadaire est un `RemoteEvent` serveur → client ; le serveur reste en pause tant qu'aucune des deux options n'a été validée.
 - Les voitures partent de la maison, suivent le chemin, livrent la destination, puis reviennent. Si une route est supprimée, leur chemin est recalculé.
+- `StoreSystem` est une extension de `Session`, pas un second monde : il crée les magasins comme bâtiments, utilise les maisons/voitures existantes et expose `StoreState` pour l'affichage.
+- Les demandes sont des identifiants serveur réservés par les voitures. Le client ne décide jamais qu'une demande est servie : il affiche la liste reçue et retire le pin exact correspondant.
+- L'évolution remplace uniquement le modèle visuel du magasin (même identifiant, même couleur, mêmes listes) et met à jour sa capacité dans `StoreSystem`.
 
 ---
 
@@ -401,9 +514,21 @@ Tout est centralisé dans `src/ReplicatedStorage/MiniMotorways/Config.luau` :
 - `Config.Grid` : taille de la grille et taille d'une case.
 - `Config.Roads` : budget de départ, ponts, ronds-points et limites.
 - `Config.Rewards` : les deux propositions d'amélioration hebdomadaires.
-- `Config.Game` : durée d'une semaine, nombre de paires, délais.
+- `Config.Game` : durée d'une semaine, délai entre deux trajets d'une maison, score et satisfaction.
 - `Config.Traffic` : vitesse des voitures, patience, régénération.
-- `Config.Colors` / `Config.HouseColors` : palette de l'interface et des bâtiments.
+- `Config.Colors` / `Config.HouseColors` : palette de l'interface, des maisons et des magasins.
+
+Les magasins ont leur propre fichier, `src/ReplicatedStorage/MiniMotorways/StoreConfig.luau` :
+
+- `Spawn.Tiers` : intervalles d'apparition par phase de temps simulé.
+- `Spawn.Zones` : zones pondérées de placement.
+- `Spawn.MinStoreDistance` / `MinBuildingDistance` : distances minimales.
+- `Demand.SmallCapacity` / `LargeCapacity` : capacités 6 / 8.
+- `Demand.SmallInterval` / `LargeInterval` : vitesse de génération.
+- `Demand.OverloadGrace` / `OverloadDrainPerSecond` : surcharge et critique.
+- `Evolution.MinAge` / `Chance` / `MaxLargeStores` : évolution.
+- `Houses.StartHouses` / `HousesPerStore` / `MaxHouses` : maisons.
+- `Visual` : tailles, hauteurs de pins et durées d'animation.
 
 Les cartes sont dans `Maps.luau` : nom, description, couleurs, fonction `isWater` et petit tracé `previewRoads` pour l'aperçu du menu.
 
@@ -413,10 +538,10 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 
 ## État du prototype
 
-- **Version** : 1.3.0
-- **Build actuel** : `7DB81580BA5D32007C86D20D670A5055C7AD19490CF9082626512384C35C6F8A`
-- **Sources** : 16 fichiers Luau, 0 erreur de syntaxe
-- **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification
+- **Version** : 1.4.0
+- **Build actuel** : `1980DEBB3E02DCB68B5EC319276A214AAA9ACCD858B8BB89CAAA59C0F704C014`
+- **Sources** : 19 fichiers Luau, 0 erreur de syntaxe
+- **Test runtime** : à refaire dans Roblox Studio après chaque grosse modification, notamment pour les magasins
 
 ### Limites connues
 
@@ -426,18 +551,22 @@ Le ruban lissé se règle dans `src/ServerScriptService/MiniMotorways/Session.lu
 - Les records sont locaux au serveur/DataStore ; il n'y a pas encore de classement global.
 - Le nom et l'identité visuelle doivent être remplacés avant une publication publique.
 - Il n'y a pas de test automatisé du runtime Roblox dans ce dépôt.
+- Les magasins sont limités à **8 couleurs uniques** par défaut. Au-delà de 8, `StoreSystem` réutilise une couleur et les maisons choisissent le magasin de même couleur le plus proche.
+- Les pins sont affichés côté client à partir de `StoreState`. Le serveur renvoie un snapshot toutes les **1,5 s** même sans changement, ce qui sert de resynchronisation si un message est manqué.
+- Le rythme et l'équilibrage des magasins (intervalles, surcharge, évolution) sont des valeurs de départ à valider en jouant.
 
 ---
 
 ## Roadmap
 
 1. Tester le parcours complet : lobby → carte → routes → livraisons → semaine → game over → rejouer.
-2. Ajouter des sons discrets (clic, livraison, fin de semaine).
-3. Ajouter un tutoriel intégré au premier lancement.
-4. Améliorer la circulation : priorités, feux, évitement plus propre.
-5. Ajouter des modes (sans ponts, chrono) et un classement global.
-6. Ajouter des captures d'écran et un GIF de gameplay au README.
-7. Remplacer le nom provisoire et les références à la marque.
+2. Valider en jeu le rythme des magasins, les capacités 6/8, l'évolution et la surcharge, puis ajuster `StoreConfig`.
+3. Ajouter des sons discrets (clic, livraison, fin de semaine, alerte de magasin).
+4. Ajouter un tutoriel intégré au premier lancement.
+5. Améliorer la circulation : priorités, feux, évitement plus propre.
+6. Ajouter des modes (sans ponts, chrono) et un classement global.
+7. Ajouter des captures d'écran et un GIF de gameplay au README.
+8. Remplacer le nom provisoire et les références à la marque.
 
 ---
 

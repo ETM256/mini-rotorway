@@ -23,6 +23,7 @@ end
 
 local CameraController = require(script.Parent.CameraController)
 local InputController = require(script.Parent.InputController)
+local StoreVisualController = require(script.Parent.StoreVisualController)
 local Lobby = require(script.Parent.UI.Lobby)
 local HUD = require(script.Parent.UI.HUD)
 
@@ -35,6 +36,7 @@ CameraController.lobby()
 local lobby
 local hud
 local input
+local storeVisuals = StoreVisualController.new()
 local currentMapId = nil
 local inGame = false
 
@@ -74,6 +76,7 @@ local function goToLobby()
 	if hud then
 		hud:hide()
 	end
+	storeVisuals:clear()
 	if lobby then
 		lobby:show()
 		lobby:showMaps()
@@ -178,6 +181,7 @@ remote("GameStarted").OnClientEvent:Connect(function(data)
 
 	lobby:hide()
 	hud:showGame(data, Maps.getById(data.mapId))
+	storeVisuals:setWorld(data.origin, data.tile)
 
 	CameraController.focus(data.origin, data.size, data.tile)
 	input:setWorld(data.origin, data.size, data.tile)
@@ -191,6 +195,10 @@ remote("State").OnClientEvent:Connect(function(state)
 	if state.over then
 		input:setEnabled(false)
 	end
+end)
+
+remote("StoreState").OnClientEvent:Connect(function(data)
+	storeVisuals:apply(data)
 end)
 
 remote("WeekChoice").OnClientEvent:Connect(function(data)

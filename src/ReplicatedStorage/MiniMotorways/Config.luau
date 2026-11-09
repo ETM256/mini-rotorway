@@ -11,7 +11,7 @@ local Config = {}
 -- Change this name (and Config.GameName) before publishing publicly.
 Config.GameName = "Mini Motorways"
 Config.Tagline = "Tracez. Reliez. Livrez."
-Config.Version = "1.3.0"
+Config.Version = "1.4.0"
 
 -- Play grid: 18 x 18 tiles of 4 studs = 72 x 72 studs. La carte garde sa
 -- taille ; ce sont les cases de visée des routes qui sont agrandies.
@@ -85,12 +85,10 @@ Config.Rewards = {
 }
 
 -- Game pacing.
+-- Le rythme des magasins et des maisons est maintenant décrit dans
+-- StoreConfig.luau. Ici on garde uniquement les réglages généraux.
 Config.Game = {
 	WeekDuration = 60, -- seconds per week
-	StartPairs = 3, -- house + destination pairs at the start
-	MaxPairs = 11, -- maximum number of houses
-	FirstPairDelay = 12, -- first bonus pair after X seconds
-	PairInterval = 15, -- then one pair every X seconds
 	SpawnInterval = 8.5, -- delay between two trips from one house
 	FirstSpawnDelay = 3, -- first trip from a house
 	DeliveryScore = 1,
@@ -163,7 +161,7 @@ Config.Colors = {
 
 -- Maisons / destinations : chaque couleur a une teinte claire pour le toit
 -- et une teinte plus dense pour le socle, comme les cartes empilées de la
--- référence. Sept couleurs, réutilisées au-delà.
+-- référence. Huit couleurs : un magasin unique par couleur au départ.
 Config.HouseColors = {
 	{ name = "Miel", color = Color3.fromHex("F4C25C"), base = Color3.fromHex("E7825F") },
 	{ name = "Corail", color = Color3.fromHex("EE8A6B"), base = Color3.fromHex("D95B5B") },
@@ -172,6 +170,7 @@ Config.HouseColors = {
 	{ name = "Vert", color = Color3.fromHex("91C97C"), base = Color3.fromHex("5FA36A") },
 	{ name = "Violet", color = Color3.fromHex("B19BDB"), base = Color3.fromHex("8B6FBF") },
 	{ name = "Turquoise", color = Color3.fromHex("62C7BC"), base = Color3.fromHex("3FA39A") },
+	{ name = "Orange", color = Color3.fromHex("F2A65A"), base = Color3.fromHex("D9823F") },
 }
 
 return Config
