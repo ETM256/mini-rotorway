@@ -135,6 +135,9 @@ input = InputController.new({
 	onErase = function(key)
 		remote("EraseRoad"):FireServer(key)
 	end,
+	onEraseMany = function(keys)
+		remote("EraseRoads"):FireServer(keys)
+	end,
 	onRoundabout = function(x, y)
 		remote("PlaceRoundabout"):FireServer(x, y)
 	end,
@@ -144,6 +147,14 @@ input = InputController.new({
 		end
 	end,
 	onPauseRequest = pauseGame,
+	onPan = function(deltaX, deltaY)
+		local camera = Workspace.CurrentCamera
+		local mapSize = CameraController.getMapSize()
+		if camera and mapSize > 0 then
+			local scale = mapSize / math.max(camera.ViewportSize.Y, 1) / CameraController.getZoom()
+			CameraController.pan(-deltaX * scale, -deltaY * scale)
+		end
+	end,
 })
 
 local panning = false
@@ -185,6 +196,7 @@ remote("GameStarted").OnClientEvent:Connect(function(data)
 
 	CameraController.focus(data.origin, data.size, data.tile)
 	input:setWorld(data.origin, data.size, data.tile)
+	input:setMapId(data.mapId)
 	input:setEnabled(true)
 	input:setTool("build")
 	hud:setTool("build")
@@ -199,6 +211,12 @@ end)
 
 remote("StoreState").OnClientEvent:Connect(function(data)
 	storeVisuals:apply(data)
+end)
+
+remote("RoadState").OnClientEvent:Connect(function(data)
+	if input then
+		input:applyRoadState(data)
+	end
 end)
 
 remote("WeekChoice").OnClientEvent:Connect(function(data)

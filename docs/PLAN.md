@@ -6,8 +6,10 @@
 - [x] `Config.luau` : grille, budgets, semaines, trafic, palette claire, récompenses
 - [x] `Maps.luau` : Dubaï, Los Angeles, Pékin, Tokyo, Dar es Salaam, Londres
 - [x] `Grid.luau` : conversions case ↔ monde, voisins orthogonaux et diagonaux
-- [x] `Pathfinding.luau` : A\* sur les routes en 8 directions
-- [x] `Remotes.luau` : RemoteEvents partagés
+- [x] `RoadConfig.luau` : réglages centralisés des routes, de l'aperçu et du trafic
+- [x] `RoadNetwork.luau` : voisinage, intersections et résolution des gestes en chemins H/V
+- [x] `Pathfinding.luau` : A\* orthogonal par défaut, 8 directions en option
+- [x] `Remotes.luau` : RemoteEvents partagés, dont `RoadState` et `EraseRoads`
 
 ## 2. Serveur
 
@@ -26,13 +28,13 @@
 
 - [x] `Main.client.luau` : câblage lobby/HUD/caméra/input
 - [x] `CameraController.luau` : caméra responsive, zoom molette, déplacement clic milieu
-- [x] `InputController.luau` : dessin souris/tactile + curseur + outil rond-point
+- [x] `InputController.luau` : dessin souris/tactile, aperçu local, annulation `Échap`, gomme et outil caméra
+- [x] `RoadPreview.luau` : cases valides en menthe, cases refusées en corail
 - [x] `StoreVisualController.luau` : pins `BillboardGui`, animations d'apparition/disparition, couleurs et compte à rebours de surcharge
-- [x] Tracé en diagonale : le geste avance simultanément sur X et Y et dessine
-  des segments à 45° au lieu de fabriquer un escalier de cases. La carte garde
-  sa grille 18 × 18, mais la détection est agrandie et favorise les diagonales
-  près des coins. En construction, le gros carré de visée est masqué : la route
-  apparaît directement sous le curseur, sans pad de choix.
+- [x] Tracé orthogonal : un geste en biais est résolu en chemin horizontal puis
+  vertical (ou l'inverse), avec hystérésis pour éviter les zigzags. La
+  construction est validée au relâchement ; `Échap` annule le tracé local sans
+  consommer de route.
 - [x] `UI/Theme.luau` : palette claire et composants
 - [x] `UI/MapPreview.luau` : aperçus circulaires clairs, eau et parcs
 - [x] `UI/Lobby.luau` : menu clair, 6 cartes, garage, stats, records
@@ -45,8 +47,9 @@
 
 - [x] Build Rojo (`MiniMotorwaysRBX.rbxlx`)
 - [x] Conversion des `Source` en `ProtectedString`
-- [x] Vérification des classes : 1 `Script`, 1 `LocalScript`, 17 `ModuleScript`
-- [x] Parse Luau de tous les fichiers
+- [x] Vérification des classes : 1 `Script`, 1 `LocalScript`, 20 `ModuleScript`
+- [x] Parse Luau de tous les 22 fichiers
+- [x] Test logique autonome de `RoadNetwork` et `Pathfinding` : 136 vérifications, 0 échec
 - [ ] Test manuel dans Studio (à faire par l'utilisateur)
 
 ## 5. Test manuel recommandé
@@ -58,13 +61,13 @@
    de côte blanc, les parcs jaune-vert, les routes graphite et les bâtiments
    colorés.
 5. Dessiner une route entre une maison et un bâtiment de la même couleur :
-   vérifier le trait blanc de chaque côté, les bords droits, les jonctions
-   arrondies et l'extrémité **ovale** de la route. En construction, aucun gros
-   carré bleu ne doit suivre la souris : la route apparaît directement. Le
-   carré de repère reste visible pour la gomme et le rond-point.
-6. Glisser à 45° : la route doit se prolonger en diagonale, rester aussi lisse
-   qu'une ligne droite, garder des jonctions ovales sans triangle et être
-   empruntée par une voiture.
+   vérifier le trait blanc de chaque côté, les bords droits, les virages
+   arrondis et l'extrémité **ovale** de la route. Pendant le glissement,
+   l'aperçu doit être menthe sur les cases libres et corail sur les cases
+   refusées. Relâcher pour valider.
+6. Glisser en biais : la route doit être un chemin **horizontal puis vertical**
+   (ou l'inverse), sans diagonale. Vérifier qu'une voiture l'emprunte et que
+   les jonctions restent propres.
 7. Vérifier qu'une voiture part, livre, revient, et que le score monte.
 8. Utiliser l'outil gomme et vérifier le recalcul des voitures.
 9. Attendre une fin de semaine : la partie se met en pause et deux
@@ -78,10 +81,12 @@
     qu'aucun écran de pause ne s'affiche et que les routes restent modifiables
     pendant la pause. Vérifier aussi que les aiguilles tournent autour du
     centre de l'horloge et que l'aiguille des heures avance progressivement.
-13. Tester la molette (zoom) et le clic milieu (déplacement).
-14. Laisser la jauge tomber à 0 et vérifier l'écran de fin + record.
-15. Rejouer, changer de carte, revenir au menu.
-16. Tester en portrait (mobile) et en paysage.
+13. Tester la molette (zoom), le clic milieu et l'outil **Caméra** (`4`).
+14. Tracer une route puis appuyer sur `Échap` avant de relâcher : aucune route
+    ne doit être construite et le budget doit rester intact.
+15. Laisser la jauge tomber à 0 et vérifier l'écran de fin + record.
+16. Rejouer, changer de carte, revenir au menu.
+17. Tester en portrait (mobile) et en paysage.
 
 ### 5.1 Test manuel des magasins
 
@@ -102,6 +107,26 @@
 15. Mettre en pause et attendre un choix de semaine : le rythme des magasins doit être figé.
 16. Rejouer : les anciens pins doivent disparaître, une nouvelle partie doit repartir avec un seul magasin.
 17. Laisser tourner jusqu'à 8 magasins / 16 maisons et vérifier que le jeu reste fluide.
+
+### 5.2 Test manuel des routes
+
+1. Tracer un segment droit : une seule case par clic, budget −1, compteur « POSÉES » +1.
+2. Tracer un virage : la route doit tourner à 90° avec un raccord arrondi, sans diagonale.
+3. Tracer un T : la branche doit se raccorder automatiquement et le carrefour doit être franchissable.
+4. Tracer une croix : quatre branches, aucun trou au centre, voitures des deux axes.
+5. Relier une maison et un magasin de même couleur : la connexion doit se faire dès que la route touche un côté.
+6. Construire deux réseaux séparés puis les relier : les voitures doivent recalculer leur trajet.
+7. Tenter de traverser un bâtiment : la case doit être corail et le serveur doit refuser.
+8. Tenter de construire sur l'eau sans pont : case corail, aucune ressource consommée.
+9. Épuiser le budget : les cases suivantes doivent être corail et refusées.
+10. Effacer une route au clic droit et en glisser plusieurs : remboursement, compteur et trajets mis à jour.
+11. Effacer une route au milieu d'un axe : les voitures déjà engagées doivent recalculer ou s'arrêter proprement.
+12. Créer une intersection très fréquentée : vérifier qu'une seule voiture s'engage à la fois et qu'aucune ne se traverse.
+13. Créer un embouteillage : les voitures doivent ralentir, s'arrêter à distance et redémarrer progressivement.
+14. Tracer une route de 30+ cases : l'aperçu doit rester fluide et le ruban ne doit pas clignoter.
+15. Vérifier les branches multiples : chaque extrémité doit avoir un capuchon et aucun segment ne doit flotter.
+16. `Échap` pendant un tracé : aucune route, aucun budget consommé.
+17. Rejouer : réseau, aperçu, réservations et compteurs doivent repartir à zéro.
 
 ## 6. Correctifs UI récents
 
@@ -262,3 +287,65 @@
 - [ ] Vérifier visuellement la taille des pins et du compte à rebours sur mobile.
 - [ ] Tester le passage à 8 magasins et l'évolution de plusieurs grands magasins.
 - [ ] Décider si les couleurs doivent être réutilisées au-delà de 8 magasins ou si `MaxStores` doit rester strictement égal au nombre de couleurs.
+
+## 10. Système de routes (10/11/2026)
+
+### Fichiers
+
+- **Créés** :
+  - `src/ReplicatedStorage/MiniMotorways/RoadConfig.luau`
+  - `src/ReplicatedStorage/MiniMotorways/RoadNetwork.luau`
+  - `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/RoadPreview.luau`
+- **Modifiés** :
+  - `Config.luau` : version 1.5.0.
+  - `Pathfinding.luau` : A* orthogonal par défaut, heuristique de Manhattan, 8 directions en option.
+  - `Remotes.luau` : `RoadState` et `EraseRoads`.
+  - `Bootstrap.server.luau` : limite de lot centralisée, suppression par lot.
+  - `Session.luau` : connexions orthogonales aux bâtiments, topologie d'intersections, réservations, freinage lissé, orientation lissée, recalcul ciblé, état réseau, compteur de routes.
+  - `InputController.luau` : aperçu local, chemins H/V, annulation `Échap`, validation au relâchement, outil caméra.
+  - `Main.client.luau` : câblage `RoadState`, `EraseRoads`, caméra et `mapId`.
+  - `UI/HUD.luau` : outil caméra, compteur « POSÉES », aide mise à jour.
+  - `README.md` et `docs/PLAN.md` : documentation, paramètres et checklist.
+
+### Fonctionnalités terminées
+
+- [x] Réseau orthogonal par défaut, virages arrondis et intersections T / croix automatiques.
+- [x] Aperçu local des cases valides / invalides, sans consommation avant validation.
+- [x] Construction au clic maintenu, validation au relâchement et annulation `Échap`.
+- [x] Résolution des gestes en biais en chemin horizontal / vertical avec hystérésis.
+- [x] Connexions automatiques aux côtés des maisons et magasins.
+- [x] Refus des bâtiments, routes existantes, eau sans pont et budget épuisé.
+- [x] Suppression au clic / glisser, remboursement et recalcul des connexions et trajets.
+- [x] A* orthogonal et recalcul ciblé après modification du réseau.
+- [x] Réservation d'intersection, distance de sécurité, freinage et redémarrage progressifs.
+- [x] Orientation des voitures lissée et ralentissement dans les virages.
+- [x] `RoadState` serveur → client et compteur de routes posées dans le HUD.
+- [x] Architecture prête pour les ponts et les futures autoroutes via `RoadConfig.Infrastructure`.
+- [x] Compilation des 22 fichiers Luau et build Rojo réussis.
+- [x] Test logique autonome : 136 vérifications, 0 échec.
+- [x] Build : `1C84FB41C17AAA25E19A148946319FA24A754A34E6DE1F4513003FE5CCDD49BD`.
+
+### Paramètres à ajuster en priorité
+
+| Paramètre | Valeur actuelle | Effet |
+| --- | --- | --- |
+| `RoadConfig.AllowDiagonals` | `false` | Réseau orthogonal ou diagonales historiques. |
+| `RoadConfig.BuildingConnection` | `"orthogonal"` | Connexion par les côtés ou aussi en diagonale. |
+| `RoadConfig.Input.MaxCellsPerRequest` | 512 | Taille maximale d'un lot. |
+| `RoadConfig.Traffic.TurnSpeedFactor` | 0,62 | Ralentissement dans les virages. |
+| `RoadConfig.Traffic.HeadingLerp` | 9 | Vitesse de rotation visuelle. |
+| `RoadConfig.Traffic.Acceleration` | 2,2 | Redémarrage après un arrêt. |
+| `RoadConfig.Traffic.Braking` | 6 | Freinage. |
+| `RoadConfig.Traffic.IntersectionReservation` | `true` | Une voiture à la fois dans une intersection. |
+| `Config.Roads.StartBudget` | 20 | Routes disponibles au départ. |
+| `Config.Traffic.CarSpacing` | 3,6 | Distance de sécurité entre voitures. |
+| `Config.Traffic.CarSpeed` | 9 | Vitesse de base en studs/s. |
+
+### Points restants
+
+- [ ] Validation runtime complète dans Roblox Studio (checklist 5.2).
+- [ ] Vérifier la fluidité avec 300+ cases de route et 16 voitures.
+- [ ] Valider visuellement les raccords de ruban aux T et aux croix.
+- [ ] Tester les embouteillages en boucle fermée et confirmer l'absence de blocage permanent.
+- [ ] Tester la construction et l'effacement au doigt sur mobile.
+- [ ] Décider du moment où les autoroutes dédiées seront branchées.

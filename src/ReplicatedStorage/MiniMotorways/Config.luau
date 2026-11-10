@@ -11,7 +11,7 @@ local Config = {}
 -- Change this name (and Config.GameName) before publishing publicly.
 Config.GameName = "Mini Motorways"
 Config.Tagline = "Tracez. Reliez. Livrez."
-Config.Version = "1.4.0"
+Config.Version = "1.5.0"
 
 -- Play grid: 18 x 18 tiles of 4 studs = 72 x 72 studs. La carte garde sa
 -- taille ; ce sont les cases de visée des routes qui sont agrandies.

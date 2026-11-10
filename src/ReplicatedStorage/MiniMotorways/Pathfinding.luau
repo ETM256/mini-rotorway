@@ -1,27 +1,36 @@
 --[[
 	Pathfinding.luau
-	A* sur la grille de routes, en 8 directions : les diagonales sont
-	autorisées. On part d'une case de route et on vise un ensemble de cases
-	(les cases de route adjacentes à la destination).
+	A* sur la grille de routes.
+
+	Par défaut le réseau est orthogonal : seuls les voisins haut / bas /
+	gauche / droite sont parcourus, avec une heuristique de Manhattan.
+	Le mode 8 directions reste disponible pour les anciens réseaux.
 ]]
 
 local Grid = require(script.Parent.Grid)
 
 local Pathfinding = {}
 
--- Une étape diagonale coûte 1 dans notre grille, donc l'heuristique
--- admissible est la distance de Chebyshev (max des deux écarts).
+local function manhattan(x1, y1, x2, y2)
+	return math.abs(x1 - x2) + math.abs(y1 - y2)
+end
+
 local function chebyshev(x1, y1, x2, y2)
 	return math.max(math.abs(x1 - x2), math.abs(y1 - y2))
 end
 
-function Pathfinding.find(roads, size, startKey, goalSet)
+-- allowDiagonals est optionnel et vaut false par défaut.
+function Pathfinding.find(roads, size, startKey, goalSet, allowDiagonals)
 	if type(startKey) ~= "string" or not roads[startKey] then
 		return nil
 	end
 	if goalSet[startKey] then
 		return { startKey }
 	end
+
+	local useDiagonals = allowDiagonals == true
+	local heuristic = useDiagonals and chebyshev or manhattan
+	local neighborList = useDiagonals and Grid.neighbors8 or Grid.neighbors
 
 	local goalCells = {}
 	for key in pairs(goalSet) do
@@ -40,11 +49,11 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 	local cameFrom = {}
 	local closed = {}
 
-	local function heuristic(key)
+	local function estimate(key)
 		local x, y = Grid.parse(key)
 		local best = math.huge
 		for _, goal in ipairs(goalCells) do
-			local d = chebyshev(x, y, goal[1], goal[2])
+			local d = heuristic(x, y, goal[1], goal[2])
 			if d < best then
 				best = d
 			end
@@ -52,7 +61,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 		return best
 	end
 
-	fScore[startKey] = heuristic(startKey)
+	fScore[startKey] = estimate(startKey)
 
 	while next(open) ~= nil do
 		local current = nil
@@ -81,7 +90,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 		closed[current] = true
 
 		local cx, cy = Grid.parse(current)
-		for _, neighbor in ipairs(Grid.neighbors8(cx, cy)) do
+		for _, neighbor in ipairs(neighborList(cx, cy)) do
 			local nx, ny = neighbor[1], neighbor[2]
 			if nx >= 0 and ny >= 0 and nx < size and ny < size then
 				local nk = Grid.key(nx, ny)
@@ -90,7 +99,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 					if tentative < (gScore[nk] or math.huge) then
 						cameFrom[nk] = current
 						gScore[nk] = tentative
-						fScore[nk] = tentative + heuristic(nk)
+						fScore[nk] = tentative + estimate(nk)
 						open[nk] = true
 					end
 				end

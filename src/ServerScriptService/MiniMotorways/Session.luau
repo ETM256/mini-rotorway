@@ -17,6 +17,8 @@ local Maps = require(Shared.Maps)
 local Grid = require(Shared.Grid)
 local Pathfinding = require(Shared.Pathfinding)
 local Remotes = require(Shared.Remotes)
+local RoadConfig = require(Shared.RoadConfig)
+local RoadNetwork = require(Shared.RoadNetwork)
 local StoreConfig = require(Shared.StoreConfig)
 
 local WorldBuilder = require(script.Parent.WorldBuilder)
@@ -201,6 +203,8 @@ function Session.new(player, mapId, worldIndex)
 	self.lastRibbonCell = nil
 	self.roadRibbonsDirty = false
 	self.roundaboutParts = {}
+	self.intersections = {}
+	self.intersectionReservations = {}
 	self.buildings = {}
 	self.buildingList = {}
 	self.houses = {}
@@ -503,6 +507,11 @@ function Session:createBuilding(kind, x, y, colorIndex, storeType)
 		table.insert(self.destinations, building)
 	end
 
+	-- Le client a besoin de connaître les nouvelles cases occupées pour
+	-- refuser immédiatement une route qui traverserait un bâtiment.
+	self:rebuildRoadTopology()
+	self:updateBuildingConnections()
+	self:sendRoadState()
 	return building
 end
 
@@ -569,7 +578,8 @@ end
 
 function Session:connectorCells(building)
 	local cells = {}
-	for _, neighbor in ipairs(Grid.neighbors8(building.x, building.y)) do
+	local allowDiagonals = RoadConfig.BuildingConnection == "all"
+	for _, neighbor in ipairs(RoadNetwork.neighbors(building.x, building.y, allowDiagonals)) do
 		local nx, ny = neighbor[1], neighbor[2]
 		if Grid.inBounds(nx, ny) then
 			local key = Grid.key(nx, ny)
@@ -579,6 +589,33 @@ function Session:connectorCells(building)
 		end
 	end
 	return cells
+end
+
+-- Une route touchant le côté d'une maison ou d'un magasin inscrit la
+-- connexion dans le graphe. Cette passe est appelée uniquement après une
+-- modification du réseau, jamais à chaque frame.
+function Session:updateBuildingConnections()
+	for _, building in ipairs(self.buildingList) do
+		building.connections = self:connectorCells(building)
+		building.connected = #building.connections > 0
+	end
+end
+
+function Session:rebuildRoadTopology()
+	self.intersections = {}
+	for key in pairs(self.roads) do
+		if RoadNetwork.isIntersectionKey(self.roads, key, RoadConfig.AllowDiagonals) then
+			self.intersections[key] = true
+		end
+	end
+
+	-- Une réservation dont la route a disparu ou dont la voiture n'existe
+	-- plus est libérée immédiatement.
+	for key, car in pairs(self.intersectionReservations) do
+		if not self.roads[key] or not car.path then
+			self.intersectionReservations[key] = nil
+		end
+	end
 end
 
 function Session:canDraw(x, y)
@@ -669,8 +706,11 @@ function Session:drawRoad(cells)
 		self:addRoadRibbons(cells)
 
 		self.roadVersion += 1
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
 		self:refreshCarPaths()
 		self:sendState()
+		self:sendRoadState()
 	end
 end
 
@@ -873,10 +913,10 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 		end
 	end
 
-	local roadWidth = tile * 0.72
-	local contourWidth = tile * 0.78
-	local edgeWidth = tile * 0.84
-	local cornerRadius = roadWidth * 0.42
+	local roadWidth = tile * RoadConfig.Visual.RoadWidth
+	local contourWidth = tile * RoadConfig.Visual.ContourWidth
+	local edgeWidth = tile * RoadConfig.Visual.EdgeWidth
+	local cornerRadius = roadWidth * RoadConfig.Visual.CornerRadius
 
 	local function addArcLayer(name, width, height, centerY, layerColor, dirs)
 		local d1, d2 = dirs[1], dirs[2]
@@ -1305,8 +1345,8 @@ function Session:createRibbonForPath(path, pathIndex)
 
 	local yOffset = (pathIndex % 10) * 0.0015
 	local ribbonLift = 0.003
-	local edgeWidth = self.tile * 0.86
-	local topWidth = self.tile * 0.74
+	local edgeWidth = self.tile * RoadConfig.Visual.RibbonEdgeWidth
+	local topWidth = self.tile * RoadConfig.Visual.RibbonTopWidth
 	local samplesPerSegment = 3
 	local samples = {}
 
@@ -1643,17 +1683,17 @@ function Session:placeRoundabout(x, y)
 	self:toast("Rond-point placé.")
 end
 
-function Session:eraseRoad(key)
+function Session:eraseRoad(key, deferState)
 	if not self.running or self.over or self.awaitingChoice then
-		return
+		return false
 	end
 	if type(key) ~= "string" or not self.roads[key] then
-		return
+		return false
 	end
 
 	local x, y = Grid.parse(key)
 	if not x then
-		return
+		return false
 	end
 
 	local roundabout = self.roundaboutParts[key]
@@ -1664,6 +1704,7 @@ function Session:eraseRoad(key)
 	end
 
 	self.roads[key] = nil
+	self.intersectionReservations[key] = nil
 	if self.bridges[key] then
 		self.bridges[key] = nil
 		self.bridgesLeft = math.min(Config.Roads.MaxBridges, self.bridgesLeft + 1)
@@ -1682,7 +1723,7 @@ function Session:eraseRoad(key)
 
 	-- Une route voisine peut redevenir une extrémité : on lui redonne
 	-- immédiatement son capuchon arrondi.
-	for _, neighbor in ipairs(Grid.neighbors8(x, y)) do
+	for _, neighbor in ipairs(RoadNetwork.neighbors(x, y, RoadConfig.AllowDiagonals)) do
 		local neighborKey = Grid.key(neighbor[1], neighbor[2])
 		if self.roads[neighborKey] then
 			self:refreshRoadVisual(neighborKey)
@@ -1695,15 +1736,75 @@ function Session:eraseRoad(key)
 	self.roadRibbonsDirty = true
 
 	self.roadVersion += 1
-	self:refreshCarPaths()
-	self:sendState()
+	if not deferState then
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
+		self:refreshCarPaths()
+		self:sendState()
+		self:sendRoadState()
+	end
+	return true
+end
+
+function Session:eraseRoads(keys)
+	if type(keys) ~= "table" then
+		return
+	end
+	local removed = 0
+	for _, key in ipairs(keys) do
+		if type(key) == "string" and self:eraseRoad(key, true) then
+			removed += 1
+		end
+	end
+	if removed > 0 then
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
+		self:refreshCarPaths()
+		self:sendState()
+		self:sendRoadState()
+	end
 end
 
 function Session:refreshCarPaths()
 	for _, car in ipairs(self.cars) do
+		self:releaseCarReservations(car)
 		car.retry = 0
 		car.roadVersion = -1
 	end
+end
+
+function Session:releaseCarReservations(car)
+	for key, holder in pairs(self.intersectionReservations) do
+		if holder == car then
+			self.intersectionReservations[key] = nil
+		end
+	end
+end
+
+function Session:releaseCarReservation(car, key)
+	if key and self.intersectionReservations[key] == car then
+		self.intersectionReservations[key] = nil
+	end
+end
+
+function Session:reserveIntersection(car, key)
+	if not RoadConfig.Traffic.IntersectionReservation then
+		return true
+	end
+	if not self.intersections[key] then
+		return true
+	end
+	local holder = self.intersectionReservations[key]
+	if holder and holder ~= car then
+		-- Une réservation orpheline ne doit jamais bloquer le réseau.
+		if not holder.path then
+			self.intersectionReservations[key] = car
+			return true
+		end
+		return false
+	end
+	self.intersectionReservations[key] = car
+	return true
 end
 
 function Session:parkingSpot(house)
@@ -1802,6 +1903,8 @@ function Session:trySpawnCar(house)
 		blocked = true,
 		waitTime = 0,
 		retry = 0,
+		speedFactor = 0,
+		heading = nil,
 		roadVersion = -1,
 		part = self:createCarVisual(house, spot),
 	}
@@ -1837,7 +1940,7 @@ function Session:findPath(car)
 
 	local bestPath = nil
 	for _, startKey in ipairs(starts) do
-		local path = Pathfinding.find(self.roads, self.size, startKey, goalSet)
+		local path = Pathfinding.find(self.roads, self.size, startKey, goalSet, RoadConfig.AllowDiagonals)
 		if path and (not bestPath or #path < #bestPath) then
 			bestPath = path
 		end
@@ -1849,6 +1952,7 @@ function Session:setCarPath(car, path)
 	if not path or #path == 0 then
 		return
 	end
+	self:releaseCarReservations(car)
 	car.path = path
 	car.index = 2
 	car.t = 0
@@ -1856,7 +1960,10 @@ function Session:setCarPath(car, path)
 	car.waitTime = 0
 	car.retry = 0
 	car.blocked = false
+	car.speedFactor = 0
+	car.heading = nil
 	car.roadVersion = self.roadVersion
+	self:reserveIntersection(car, path[1])
 
 	local x, y = Grid.parse(path[1])
 	if x then
@@ -1867,20 +1974,24 @@ function Session:setCarPath(car, path)
 	end
 end
 
-function Session:isBlockedAhead(car, direction)
+-- Distance au véhicule le plus proche devant, dans le même couloir.
+-- nil signifie que la voie est libre. Le seuil latéral ignore les voitures
+-- qui arrivent en sens inverse : elles ont leur propre couloir.
+function Session:frontGap(car, direction)
+	local best = nil
 	for _, other in ipairs(self.cars) do
 		if other ~= car and other.pos then
 			local delta = other.pos - car.pos
 			local along = delta:Dot(direction)
-			if along > 0 and along < Config.Traffic.CarSpacing then
+			if along > 0 and along < 9 then
 				local lateral = (delta - direction * along).Magnitude
-				if lateral < 0.9 then
-					return true
+				if lateral < 0.95 and (not best or along < best) then
+					best = along
 				end
 			end
 		end
 	end
-	return false
+	return best
 end
 
 function Session:completeLeg(car)
@@ -1906,6 +2017,7 @@ function Session:completeLeg(car)
 
 		car.state = "back"
 
+		self:releaseCarReservations(car)
 		local reversed = {}
 		for i = #car.path, 1, -1 do
 			reversed[#reversed + 1] = car.path[i]
@@ -1916,7 +2028,9 @@ function Session:completeLeg(car)
 		car.currentKey = reversed[1]
 		car.waitTime = 0
 		car.retry = 0
+		car.speedFactor = 0
 		car.roadVersion = self.roadVersion
+		self:reserveIntersection(car, reversed[1])
 
 		return false
 	end
@@ -1951,6 +2065,22 @@ function Session:updateCar(car, dt)
 		return false
 	end
 
+	-- Le réseau a changé : on recalcule une seule fois, au prochain passage
+	-- de la voiture, puis roadVersion est remis à jour.
+	if car.roadVersion ~= self.roadVersion then
+		local path = self:findPath(car)
+		if path then
+			self:setCarPath(car, path)
+		else
+			self:releaseCarReservations(car)
+			car.path = nil
+			car.retry = Config.Traffic.RetryPathInterval
+			car.blocked = true
+			car.waitTime += dt
+			return false
+		end
+	end
+
 	if car.index > #car.path then
 		return self:completeLeg(car)
 	end
@@ -1962,6 +2092,7 @@ function Session:updateCar(car, dt)
 		if path then
 			self:setCarPath(car, path)
 		else
+			self:releaseCarReservations(car)
 			car.path = nil
 			car.retry = Config.Traffic.RetryPathInterval
 		end
@@ -1971,6 +2102,7 @@ function Session:updateCar(car, dt)
 	local fx, fy = Grid.parse(fromKey)
 	local tx, ty = Grid.parse(toKey)
 	if not fx or not tx then
+		self:releaseCarReservations(car)
 		car.path = nil
 		return false
 	end
@@ -1978,28 +2110,99 @@ function Session:updateCar(car, dt)
 	local fromPos = Grid.center(self.origin, fx, fy, 0.5)
 	local toPos = Grid.center(self.origin, tx, ty, 0.5)
 	local direction = (toPos - fromPos).Unit
-	-- La vitesse doit rester en studs/seconde réels : une diagonale est
-	-- plus longue qu'une case orthogonale, donc on divise par la longueur
-	-- du segment et non par la taille de la case.
 	local segmentLength = math.max((toPos - fromPos).Magnitude, 0.001)
 
-	local blocked = self:isBlockedAhead(car, direction)
+	local blocked = false
+	local targetSpeed = 1
+
+	-- Réservation d'intersection : une seule voiture à la fois au centre.
+	if car.t <= 0.001 and self.intersections[toKey] then
+		if not self:reserveIntersection(car, toKey) then
+			blocked = true
+		end
+	end
+
+	-- Distance de sécurité. On freine avant la voiture de devant, puis on
+	-- s'arrête seulement quand la garde minimale est atteinte.
+	local gap = self:frontGap(car, direction)
+	if gap then
+		if gap <= Config.Traffic.CarSpacing then
+			blocked = true
+		elseif gap < Config.Traffic.CarSpacing + 2.4 then
+			targetSpeed = math.max(0.20, (gap - Config.Traffic.CarSpacing) / 2.4)
+		end
+	end
+
+	-- Ralentissement dans les virages et à l'approche d'un carrefour.
+	local nextKey = car.path[car.index + 1]
+	if nextKey then
+		local nx, ny = Grid.parse(nextKey)
+		if nx then
+			local nextDirection = (Grid.center(self.origin, nx, ny, 0.5) - toPos).Unit
+			if nextDirection:Dot(direction) < 0.995 then
+				targetSpeed = math.min(targetSpeed, RoadConfig.Traffic.TurnSpeedFactor)
+			end
+		end
+	end
+	if self.intersections[toKey] then
+		targetSpeed = math.min(targetSpeed, RoadConfig.Traffic.IntersectionApproachSlow)
+	end
+
 	if blocked then
 		car.blocked = true
 		car.waitTime += dt
+		car.speedFactor = math.max(0, (car.speedFactor or 0) - RoadConfig.Traffic.Braking * dt)
+		-- Si la voiture n'est pas encore entrée dans l'intersection, elle
+		-- rend sa réservation pour ne pas bloquer les autres directions.
+		if car.t <= 0.001 and self.intersectionReservations[toKey] == car then
+			self.intersectionReservations[toKey] = nil
+		end
 	else
 		car.blocked = false
 		car.waitTime = math.max(0, car.waitTime - dt * 2)
-		car.t += (Config.Traffic.CarSpeed * dt) / segmentLength
+		local speedFactor = car.speedFactor or 0
+		if speedFactor < targetSpeed then
+			speedFactor = math.min(targetSpeed, speedFactor + RoadConfig.Traffic.Acceleration * dt)
+		else
+			speedFactor = math.max(targetSpeed, speedFactor - RoadConfig.Traffic.Braking * dt)
+		end
+		car.speedFactor = speedFactor
+
+		local advance = (Config.Traffic.CarSpeed * speedFactor * dt) / segmentLength
+		if gap then
+			-- Ne jamais franchir la garde minimale, même avec l'inertie.
+			local maxAdvance = (gap - Config.Traffic.CarSpacing * 0.85) / segmentLength
+			advance = math.max(0, math.min(advance, maxAdvance))
+		end
+		car.t += advance
+	end
+
+	local heading = direction
+	if car.heading then
+		local alpha = math.min(1, RoadConfig.Traffic.HeadingLerp * dt)
+		local blended = car.heading:Lerp(direction, alpha)
+		if blended.Magnitude > 0.001 then
+			heading = blended.Unit
+		end
+	end
+	car.heading = heading
+
+	local right = Vector3.new(-heading.Z, 0, heading.X)
+	local laneOffset = math.min(0.55, self.tile * 0.14)
+	local t = math.min(car.t, 1)
+	car.pos = fromPos:Lerp(toPos, t) + right * laneOffset
+	if car.part then
+		car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + heading))
 	end
 
 	if car.t >= 1 then
 		car.t = 0
 		car.index += 1
 		car.currentKey = toKey
-		car.pos = toPos
+		self:releaseCarReservation(car, fromKey)
+		car.pos = toPos + right * laneOffset
 		if car.part then
-			car.part:PivotTo(CFrame.new(toPos))
+			car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + heading))
 		end
 		if car.index > #car.path then
 			return self:completeLeg(car)
@@ -2007,14 +2210,11 @@ function Session:updateCar(car, dt)
 		return false
 	end
 
-	car.pos = fromPos:Lerp(toPos, car.t) + Vector3.new(-direction.Z, 0, direction.X) * 0.55
-	if car.part then
-		car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + direction))
-	end
 	return false
 end
 
 function Session:retireCar(car)
+	self:releaseCarReservations(car)
 	if car.claim and car.dest and car.demandId and self.storeSystem then
 		self.storeSystem:releaseClaim(car.dest, car.demandId)
 		car.claim = false
@@ -2239,7 +2439,39 @@ function Session:update(dt)
 	end
 end
 
+function Session:sendRoadState()
+	if not self.player then
+		return
+	end
+	local roadCells = {}
+	for key in pairs(self.roads) do
+		roadCells[#roadCells + 1] = key
+	end
+	local bridgeCells = {}
+	for key in pairs(self.bridges) do
+		bridgeCells[#bridgeCells + 1] = key
+	end
+	local buildingCells = {}
+	for _, building in ipairs(self.buildingList) do
+		buildingCells[#buildingCells + 1] = building.key
+	end
+	Remotes.get("RoadState"):FireClient(self.player, {
+		roads = roadCells,
+		bridges = bridgeCells,
+		buildings = buildingCells,
+		budget = self.budget,
+		bridgesLeft = self.bridgesLeft,
+		count = #roadCells,
+		allowDiagonals = RoadConfig.AllowDiagonals,
+		roadVersion = self.roadVersion,
+	})
+end
+
 function Session:sendState()
+	local roadCount = 0
+	for _ in pairs(self.roads) do
+		roadCount += 1
+	end
 	Remotes.get("State"):FireClient(self.player, {
 		score = self.score,
 		week = self.week,
@@ -2257,6 +2489,7 @@ function Session:sendState()
 		destinations = #self.destinations,
 		largeStores = self.storeSystem and self.storeSystem.largeCount or 0,
 		cars = #self.cars,
+		roadsBuilt = roadCount,
 	})
 end
 
@@ -2276,7 +2509,10 @@ function Session:start()
 		weekDuration = Config.Game.WeekDuration,
 	})
 
+	self:rebuildRoadTopology()
+	self:updateBuildingConnections()
 	self:sendState()
+	self:sendRoadState()
 	if self.storeSystem then
 		self.storeSystem:broadcast()
 	end
@@ -2333,6 +2569,8 @@ function Session:destroy()
 	self.buildings = {}
 	self.buildingList = {}
 	self.roundaboutParts = {}
+	self.intersections = {}
+	self.intersectionReservations = {}
 	self.roadRibbons = {}
 	self.roadRibbonPaths = {}
 	self.ribbonEdges = {}

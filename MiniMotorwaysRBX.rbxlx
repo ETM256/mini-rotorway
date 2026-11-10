@@ -53,7 +53,7 @@ local Config = {}
 -- Change this name (and Config.GameName) before publishing publicly.
 Config.GameName = "Mini Motorways"
 Config.Tagline = "Tracez. Reliez. Livrez."
-Config.Version = "1.4.0"
+Config.Version = "1.5.0"
 
 -- Play grid: 18 x 18 tiles of 4 studs = 72 x 72 studs. La carte garde sa
 -- taille ; ce sont les cases de visée des routes qui sont agrandies.
@@ -742,28 +742,37 @@ return Maps
           <string name="Name">Pathfinding</string>
           <ProtectedString name="Source"><![CDATA[--[[
 	Pathfinding.luau
-	A* sur la grille de routes, en 8 directions : les diagonales sont
-	autorisées. On part d'une case de route et on vise un ensemble de cases
-	(les cases de route adjacentes à la destination).
+	A* sur la grille de routes.
+
+	Par défaut le réseau est orthogonal : seuls les voisins haut / bas /
+	gauche / droite sont parcourus, avec une heuristique de Manhattan.
+	Le mode 8 directions reste disponible pour les anciens réseaux.
 ]]
 
 local Grid = require(script.Parent.Grid)
 
 local Pathfinding = {}
 
--- Une étape diagonale coûte 1 dans notre grille, donc l'heuristique
--- admissible est la distance de Chebyshev (max des deux écarts).
+local function manhattan(x1, y1, x2, y2)
+	return math.abs(x1 - x2) + math.abs(y1 - y2)
+end
+
 local function chebyshev(x1, y1, x2, y2)
 	return math.max(math.abs(x1 - x2), math.abs(y1 - y2))
 end
 
-function Pathfinding.find(roads, size, startKey, goalSet)
+-- allowDiagonals est optionnel et vaut false par défaut.
+function Pathfinding.find(roads, size, startKey, goalSet, allowDiagonals)
 	if type(startKey) ~= "string" or not roads[startKey] then
 		return nil
 	end
 	if goalSet[startKey] then
 		return { startKey }
 	end
+
+	local useDiagonals = allowDiagonals == true
+	local heuristic = useDiagonals and chebyshev or manhattan
+	local neighborList = useDiagonals and Grid.neighbors8 or Grid.neighbors
 
 	local goalCells = {}
 	for key in pairs(goalSet) do
@@ -782,11 +791,11 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 	local cameFrom = {}
 	local closed = {}
 
-	local function heuristic(key)
+	local function estimate(key)
 		local x, y = Grid.parse(key)
 		local best = math.huge
 		for _, goal in ipairs(goalCells) do
-			local d = chebyshev(x, y, goal[1], goal[2])
+			local d = heuristic(x, y, goal[1], goal[2])
 			if d < best then
 				best = d
 			end
@@ -794,7 +803,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 		return best
 	end
 
-	fScore[startKey] = heuristic(startKey)
+	fScore[startKey] = estimate(startKey)
 
 	while next(open) ~= nil do
 		local current = nil
@@ -823,7 +832,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 		closed[current] = true
 
 		local cx, cy = Grid.parse(current)
-		for _, neighbor in ipairs(Grid.neighbors8(cx, cy)) do
+		for _, neighbor in ipairs(neighborList(cx, cy)) do
 			local nx, ny = neighbor[1], neighbor[2]
 			if nx >= 0 and ny >= 0 and nx < size and ny < size then
 				local nk = Grid.key(nx, ny)
@@ -832,7 +841,7 @@ function Pathfinding.find(roads, size, startKey, goalSet)
 					if tentative < (gScore[nk] or math.huge) then
 						cameFrom[nk] = current
 						gScore[nk] = tentative
-						fScore[nk] = tentative + heuristic(nk)
+						fScore[nk] = tentative + estimate(nk)
 						open[nk] = true
 					end
 				end
@@ -888,6 +897,7 @@ function Remotes.setup()
 		"StartGame",
 		"DrawRoad",
 		"EraseRoad",
+		"EraseRoads",
 		"SetPaused",
 		"SetSpeed",
 		"PlaceRoundabout",
@@ -899,6 +909,7 @@ function Remotes.setup()
 		"GameStarted",
 		"State",
 		"StoreState",
+		"RoadState",
 		"GameOver",
 		"Toast",
 		"Profile",
@@ -913,6 +924,277 @@ return Remotes
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="9">
+        <Properties>
+          <string name="Name">RoadConfig</string>
+          <ProtectedString name="Source"><![CDATA[--[[
+	RoadConfig.luau
+	Réglages centralisés du système de routes.
+
+	Les routes sont orthogonales par défaut : chaque déplacement va d'une case
+	vers une case voisine en haut, en bas, à gauche ou à droite. Un geste en
+	biais est transformé en chemin horizontal puis vertical (ou l'inverse).
+	Les diagonales restent disponibles en option pour les anciens réseaux.
+]]
+
+local Config = require(script.Parent.Config)
+
+local RoadConfig = {}
+
+RoadConfig.Version = "1.0.0"
+
+-- true : autorise les cases reliées par un coin (comportement historique).
+-- false : réseau orthogonal uniquement, virages à 90° et intersections
+--         en T / en croix générées automatiquement.
+RoadConfig.AllowDiagonals = false
+
+-- "orthogonal" : une route doit toucher un côté du bâtiment pour le desservir.
+-- "all"        : accepte aussi une route posée en diagonale du bâtiment.
+RoadConfig.BuildingConnection = "orthogonal"
+
+RoadConfig.Visual = {
+	-- Largeurs exprimées en fraction d'une case.
+	RoadWidth = 0.72,
+	ContourWidth = 0.78,
+	EdgeWidth = 0.84,
+	RibbonEdgeWidth = 0.86,
+	RibbonTopWidth = 0.74,
+	CornerRadius = 0.42,
+
+	-- Aperçu local avant construction.
+	PreviewScale = 0.74,
+	PreviewHeight = 0.045,
+	PreviewY = 0.84,
+	PreviewTransparency = 0.34,
+	PreviewHoverTransparency = 0.48,
+	PreviewValidColor = Config.Colors.Teal,
+	PreviewInvalidColor = Config.Colors.Danger,
+}
+
+RoadConfig.Input = {
+	-- La construction est validée au relâchement. L'aperçu reste local :
+	-- Échap peut donc annuler sans avoir consommé de route.
+	CommitOnRelease = true,
+	MaxCellsPerRequest = 512,
+	-- Hystérésis : en dessous de ce seuil, on conserve le dernier axe.
+	DragAxisThreshold = 0.35,
+}
+
+RoadConfig.Traffic = {
+	-- Ralentissement visuel dans les virages et les intersections.
+	TurnSpeedFactor = 0.62,
+	IntersectionApproachSlow = 0.76,
+	-- La direction visuelle rejoint la direction réelle sans rotation sèche.
+	HeadingLerp = 9,
+	-- Redémarrage progressif après un arrêt.
+	Acceleration = 2.2,
+	Braking = 6,
+	-- Une intersection (3 ou 4 voisins) est réservée à une voiture à la fois.
+	IntersectionReservation = true,
+	ReservationReleaseTime = 8,
+}
+
+-- Emplacements prévus pour les futures infrastructures. Les ponts existent
+-- déjà ; les autoroutes sont volontairement désactivées tant que leur
+-- logique de trajet dédiée n'est pas branchée.
+RoadConfig.Infrastructure = {
+	Bridges = {
+		Enabled = true,
+		CostsRoadPiece = true,
+		SpecialResource = "bridges",
+	},
+	Highways = {
+		Enabled = false,
+		CostsRoadPiece = false,
+		MaxEntrances = 2,
+		SpeedMultiplier = 1.8,
+	},
+}
+
+return RoadConfig
+]]></ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="10">
+        <Properties>
+          <string name="Name">RoadNetwork</string>
+          <ProtectedString name="Source"><![CDATA[--[[
+	RoadNetwork.luau
+	Petites opérations partagées par le client et le serveur :
+	  - voisinage orthogonal (ou 8 directions en mode historique) ;
+	  - comptage des connexions d'une case (virage, T, croix) ;
+	  - résolution d'un geste en chemin horizontal / vertical sans diagonale.
+
+	La simulation reste dans Session : ce module ne possède aucune route et
+	ne crée aucun objet.
+]]
+
+local RoadNetwork = {}
+
+local ORTHOGONAL = {
+	{ 0, -1 },
+	{ 1, 0 },
+	{ 0, 1 },
+	{ -1, 0 },
+}
+
+local DIAGONAL = {
+	{ 1, -1 },
+	{ 1, 1 },
+	{ -1, 1 },
+	{ -1, -1 },
+}
+
+RoadNetwork.ORTHOGONAL = ORTHOGONAL
+RoadNetwork.DIAGONAL = DIAGONAL
+
+function RoadNetwork.neighbors(x, y, allowDiagonals)
+	local list = {}
+	for _, direction in ipairs(ORTHOGONAL) do
+		list[#list + 1] = { x + direction[1], y + direction[2] }
+	end
+	if allowDiagonals then
+		for _, direction in ipairs(DIAGONAL) do
+			list[#list + 1] = { x + direction[1], y + direction[2] }
+		end
+	end
+	return list
+end
+
+function RoadNetwork.isAdjacent(ax, ay, bx, by, allowDiagonals)
+	local dx = math.abs(bx - ax)
+	local dy = math.abs(by - ay)
+	if dx == 0 and dy == 0 then
+		return false
+	end
+	if dy == 0 and dx == 1 then
+		return true
+	end
+	if dx == 0 and dy == 1 then
+		return true
+	end
+	return allowDiagonals == true and dx == 1 and dy == 1
+end
+
+function RoadNetwork.countRoadNeighbors(roads, x, y, allowDiagonals)
+	local count = 0
+	for _, neighbor in ipairs(RoadNetwork.neighbors(x, y, allowDiagonals)) do
+		local key = neighbor[1] .. ":" .. neighbor[2]
+		if roads[key] then
+			count += 1
+		end
+	end
+	return count
+end
+
+function RoadNetwork.countRoadNeighborsAtKey(roads, key, allowDiagonals)
+	local x, y = string.match(key, "^(%-?%d+):(%-?%d+)$")
+	if not x then
+		return 0
+	end
+	return RoadNetwork.countRoadNeighbors(roads, tonumber(x), tonumber(y), allowDiagonals)
+end
+
+function RoadNetwork.isIntersection(roads, x, y, allowDiagonals)
+	return RoadNetwork.countRoadNeighbors(roads, x, y, allowDiagonals) >= 3
+end
+
+function RoadNetwork.isIntersectionKey(roads, key, allowDiagonals)
+	return RoadNetwork.countRoadNeighborsAtKey(roads, key, allowDiagonals) >= 3
+end
+
+-- Construit un chemin orthogonal entre deux cases, sans inclure la case de
+-- départ. preferredAxis vaut "x" ou "y" : il décide de l'axe parcouru en
+-- premier quand le déplacement est en biais.
+function RoadNetwork.manhattanPath(fromX, fromY, toX, toY, preferredAxis)
+	local cells = {}
+	if fromX == toX and fromY == toY then
+		return cells
+	end
+
+	local dx = toX - fromX
+	local dy = toY - fromY
+	local horizontalFirst
+
+	if math.abs(dy) == 0 then
+		horizontalFirst = true
+	elseif math.abs(dx) == 0 then
+		horizontalFirst = false
+	elseif preferredAxis == "x" then
+		horizontalFirst = true
+	elseif preferredAxis == "y" then
+		horizontalFirst = false
+	elseif math.abs(dx) > math.abs(dy) then
+		horizontalFirst = true
+	elseif math.abs(dy) > math.abs(dx) then
+		horizontalFirst = false
+	else
+		horizontalFirst = true
+	end
+
+	local x, y = fromX, fromY
+	local guard = 0
+	local function add(cx, cy)
+		guard += 1
+		if guard <= 512 then
+			cells[#cells + 1] = { cx, cy }
+		end
+	end
+
+	if horizontalFirst then
+		local stepX = dx > 0 and 1 or -1
+		while x ~= toX and guard < 512 do
+			x += stepX
+			add(x, y)
+		end
+		local stepY = dy > 0 and 1 or -1
+		while y ~= toY and guard < 512 do
+			y += stepY
+			add(x, y)
+		end
+	else
+		local stepY = dy > 0 and 1 or -1
+		while y ~= toY and guard < 512 do
+			y += stepY
+			add(x, y)
+		end
+		local stepX = dx > 0 and 1 or -1
+		while x ~= toX and guard < 512 do
+			x += stepX
+			add(x, y)
+		end
+	end
+
+	return cells
+end
+
+-- Ajoute les cellules intermédiaires d'un tracé déjà ordonné, en supprimant
+-- les doublons. Utile pour un lot envoyé au serveur.
+function RoadNetwork.flattenPath(startX, startY, cells, preferredAxis)
+	local result = {}
+	local seen = {}
+	local x, y = startX, startY
+	for _, cell in ipairs(cells or {}) do
+		if type(cell) == "table" then
+			local tx = math.floor(tonumber(cell[1]) or x)
+			local ty = math.floor(tonumber(cell[2]) or y)
+			for _, step in ipairs(RoadNetwork.manhattanPath(x, y, tx, ty, preferredAxis)) do
+				local key = step[1] .. ":" .. step[2]
+				if not seen[key] then
+					seen[key] = true
+					result[#result + 1] = step
+				end
+			end
+			x, y = tx, ty
+		end
+	end
+	return result
+end
+
+return RoadNetwork
+]]></ProtectedString>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">StoreConfig</string>
           <ProtectedString name="Source"><![CDATA[--[[
@@ -1049,15 +1331,15 @@ return StoreConfig
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="10">
+  <Item class="ServerScriptService" referent="12">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="11">
+    <Item class="Folder" referent="13">
       <Properties>
         <string name="Name">MiniMotorways</string>
       </Properties>
-      <Item class="Script" referent="12">
+      <Item class="Script" referent="14">
         <Properties>
           <string name="Name">Bootstrap</string>
           <token name="RunContext">0</token>
@@ -1077,6 +1359,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Maps = require(Shared.Maps)
 local Remotes = require(Shared.Remotes)
+local SharedRoadConfig = require(Shared.RoadConfig)
 
 local Session = require(script.Parent.Session)
 local Profile = require(script.Parent.Profile)
@@ -1146,7 +1429,7 @@ end)
 
 Remotes.get("DrawRoad").OnServerEvent:Connect(function(player, cells)
 	local session = sessions[player]
-	if not session or type(cells) ~= "table" or #cells > 128 then
+	if not session or type(cells) ~= "table" or #cells > SharedRoadConfig.Input.MaxCellsPerRequest then
 		return
 	end
 	session:drawRoad(cells)
@@ -1156,6 +1439,13 @@ Remotes.get("EraseRoad").OnServerEvent:Connect(function(player, key)
 	local session = sessions[player]
 	if session and type(key) == "string" then
 		session:eraseRoad(key)
+	end
+end)
+
+Remotes.get("EraseRoads").OnServerEvent:Connect(function(player, keys)
+	local session = sessions[player]
+	if session and type(keys) == "table" and #keys <= SharedRoadConfig.Input.MaxCellsPerRequest then
+		session:eraseRoads(keys)
 	end
 end)
 
@@ -1235,7 +1525,7 @@ warn("[MiniMotorways] Server ready — " .. Config.GameName .. " v" .. Config.Ve
 ]]></ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">Profile</string>
           <ProtectedString name="Source"><![CDATA[--[[
@@ -1335,7 +1625,7 @@ return Profile
 ]]></ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">Session</string>
           <ProtectedString name="Source"><![CDATA[--[[
@@ -1357,6 +1647,8 @@ local Maps = require(Shared.Maps)
 local Grid = require(Shared.Grid)
 local Pathfinding = require(Shared.Pathfinding)
 local Remotes = require(Shared.Remotes)
+local RoadConfig = require(Shared.RoadConfig)
+local RoadNetwork = require(Shared.RoadNetwork)
 local StoreConfig = require(Shared.StoreConfig)
 
 local WorldBuilder = require(script.Parent.WorldBuilder)
@@ -1541,6 +1833,8 @@ function Session.new(player, mapId, worldIndex)
 	self.lastRibbonCell = nil
 	self.roadRibbonsDirty = false
 	self.roundaboutParts = {}
+	self.intersections = {}
+	self.intersectionReservations = {}
 	self.buildings = {}
 	self.buildingList = {}
 	self.houses = {}
@@ -1843,6 +2137,11 @@ function Session:createBuilding(kind, x, y, colorIndex, storeType)
 		table.insert(self.destinations, building)
 	end
 
+	-- Le client a besoin de connaître les nouvelles cases occupées pour
+	-- refuser immédiatement une route qui traverserait un bâtiment.
+	self:rebuildRoadTopology()
+	self:updateBuildingConnections()
+	self:sendRoadState()
 	return building
 end
 
@@ -1909,7 +2208,8 @@ end
 
 function Session:connectorCells(building)
 	local cells = {}
-	for _, neighbor in ipairs(Grid.neighbors8(building.x, building.y)) do
+	local allowDiagonals = RoadConfig.BuildingConnection == "all"
+	for _, neighbor in ipairs(RoadNetwork.neighbors(building.x, building.y, allowDiagonals)) do
 		local nx, ny = neighbor[1], neighbor[2]
 		if Grid.inBounds(nx, ny) then
 			local key = Grid.key(nx, ny)
@@ -1919,6 +2219,33 @@ function Session:connectorCells(building)
 		end
 	end
 	return cells
+end
+
+-- Une route touchant le côté d'une maison ou d'un magasin inscrit la
+-- connexion dans le graphe. Cette passe est appelée uniquement après une
+-- modification du réseau, jamais à chaque frame.
+function Session:updateBuildingConnections()
+	for _, building in ipairs(self.buildingList) do
+		building.connections = self:connectorCells(building)
+		building.connected = #building.connections > 0
+	end
+end
+
+function Session:rebuildRoadTopology()
+	self.intersections = {}
+	for key in pairs(self.roads) do
+		if RoadNetwork.isIntersectionKey(self.roads, key, RoadConfig.AllowDiagonals) then
+			self.intersections[key] = true
+		end
+	end
+
+	-- Une réservation dont la route a disparu ou dont la voiture n'existe
+	-- plus est libérée immédiatement.
+	for key, car in pairs(self.intersectionReservations) do
+		if not self.roads[key] or not car.path then
+			self.intersectionReservations[key] = nil
+		end
+	end
 end
 
 function Session:canDraw(x, y)
@@ -2009,8 +2336,11 @@ function Session:drawRoad(cells)
 		self:addRoadRibbons(cells)
 
 		self.roadVersion += 1
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
 		self:refreshCarPaths()
 		self:sendState()
+		self:sendRoadState()
 	end
 end
 
@@ -2213,10 +2543,10 @@ function Session:createRoadVisual(key, isBridge, delay, animate)
 		end
 	end
 
-	local roadWidth = tile * 0.72
-	local contourWidth = tile * 0.78
-	local edgeWidth = tile * 0.84
-	local cornerRadius = roadWidth * 0.42
+	local roadWidth = tile * RoadConfig.Visual.RoadWidth
+	local contourWidth = tile * RoadConfig.Visual.ContourWidth
+	local edgeWidth = tile * RoadConfig.Visual.EdgeWidth
+	local cornerRadius = roadWidth * RoadConfig.Visual.CornerRadius
 
 	local function addArcLayer(name, width, height, centerY, layerColor, dirs)
 		local d1, d2 = dirs[1], dirs[2]
@@ -2645,8 +2975,8 @@ function Session:createRibbonForPath(path, pathIndex)
 
 	local yOffset = (pathIndex % 10) * 0.0015
 	local ribbonLift = 0.003
-	local edgeWidth = self.tile * 0.86
-	local topWidth = self.tile * 0.74
+	local edgeWidth = self.tile * RoadConfig.Visual.RibbonEdgeWidth
+	local topWidth = self.tile * RoadConfig.Visual.RibbonTopWidth
 	local samplesPerSegment = 3
 	local samples = {}
 
@@ -2983,17 +3313,17 @@ function Session:placeRoundabout(x, y)
 	self:toast("Rond-point placé.")
 end
 
-function Session:eraseRoad(key)
+function Session:eraseRoad(key, deferState)
 	if not self.running or self.over or self.awaitingChoice then
-		return
+		return false
 	end
 	if type(key) ~= "string" or not self.roads[key] then
-		return
+		return false
 	end
 
 	local x, y = Grid.parse(key)
 	if not x then
-		return
+		return false
 	end
 
 	local roundabout = self.roundaboutParts[key]
@@ -3004,6 +3334,7 @@ function Session:eraseRoad(key)
 	end
 
 	self.roads[key] = nil
+	self.intersectionReservations[key] = nil
 	if self.bridges[key] then
 		self.bridges[key] = nil
 		self.bridgesLeft = math.min(Config.Roads.MaxBridges, self.bridgesLeft + 1)
@@ -3022,7 +3353,7 @@ function Session:eraseRoad(key)
 
 	-- Une route voisine peut redevenir une extrémité : on lui redonne
 	-- immédiatement son capuchon arrondi.
-	for _, neighbor in ipairs(Grid.neighbors8(x, y)) do
+	for _, neighbor in ipairs(RoadNetwork.neighbors(x, y, RoadConfig.AllowDiagonals)) do
 		local neighborKey = Grid.key(neighbor[1], neighbor[2])
 		if self.roads[neighborKey] then
 			self:refreshRoadVisual(neighborKey)
@@ -3035,15 +3366,75 @@ function Session:eraseRoad(key)
 	self.roadRibbonsDirty = true
 
 	self.roadVersion += 1
-	self:refreshCarPaths()
-	self:sendState()
+	if not deferState then
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
+		self:refreshCarPaths()
+		self:sendState()
+		self:sendRoadState()
+	end
+	return true
+end
+
+function Session:eraseRoads(keys)
+	if type(keys) ~= "table" then
+		return
+	end
+	local removed = 0
+	for _, key in ipairs(keys) do
+		if type(key) == "string" and self:eraseRoad(key, true) then
+			removed += 1
+		end
+	end
+	if removed > 0 then
+		self:rebuildRoadTopology()
+		self:updateBuildingConnections()
+		self:refreshCarPaths()
+		self:sendState()
+		self:sendRoadState()
+	end
 end
 
 function Session:refreshCarPaths()
 	for _, car in ipairs(self.cars) do
+		self:releaseCarReservations(car)
 		car.retry = 0
 		car.roadVersion = -1
 	end
+end
+
+function Session:releaseCarReservations(car)
+	for key, holder in pairs(self.intersectionReservations) do
+		if holder == car then
+			self.intersectionReservations[key] = nil
+		end
+	end
+end
+
+function Session:releaseCarReservation(car, key)
+	if key and self.intersectionReservations[key] == car then
+		self.intersectionReservations[key] = nil
+	end
+end
+
+function Session:reserveIntersection(car, key)
+	if not RoadConfig.Traffic.IntersectionReservation then
+		return true
+	end
+	if not self.intersections[key] then
+		return true
+	end
+	local holder = self.intersectionReservations[key]
+	if holder and holder ~= car then
+		-- Une réservation orpheline ne doit jamais bloquer le réseau.
+		if not holder.path then
+			self.intersectionReservations[key] = car
+			return true
+		end
+		return false
+	end
+	self.intersectionReservations[key] = car
+	return true
 end
 
 function Session:parkingSpot(house)
@@ -3142,6 +3533,8 @@ function Session:trySpawnCar(house)
 		blocked = true,
 		waitTime = 0,
 		retry = 0,
+		speedFactor = 0,
+		heading = nil,
 		roadVersion = -1,
 		part = self:createCarVisual(house, spot),
 	}
@@ -3177,7 +3570,7 @@ function Session:findPath(car)
 
 	local bestPath = nil
 	for _, startKey in ipairs(starts) do
-		local path = Pathfinding.find(self.roads, self.size, startKey, goalSet)
+		local path = Pathfinding.find(self.roads, self.size, startKey, goalSet, RoadConfig.AllowDiagonals)
 		if path and (not bestPath or #path < #bestPath) then
 			bestPath = path
 		end
@@ -3189,6 +3582,7 @@ function Session:setCarPath(car, path)
 	if not path or #path == 0 then
 		return
 	end
+	self:releaseCarReservations(car)
 	car.path = path
 	car.index = 2
 	car.t = 0
@@ -3196,7 +3590,10 @@ function Session:setCarPath(car, path)
 	car.waitTime = 0
 	car.retry = 0
 	car.blocked = false
+	car.speedFactor = 0
+	car.heading = nil
 	car.roadVersion = self.roadVersion
+	self:reserveIntersection(car, path[1])
 
 	local x, y = Grid.parse(path[1])
 	if x then
@@ -3207,20 +3604,24 @@ function Session:setCarPath(car, path)
 	end
 end
 
-function Session:isBlockedAhead(car, direction)
+-- Distance au véhicule le plus proche devant, dans le même couloir.
+-- nil signifie que la voie est libre. Le seuil latéral ignore les voitures
+-- qui arrivent en sens inverse : elles ont leur propre couloir.
+function Session:frontGap(car, direction)
+	local best = nil
 	for _, other in ipairs(self.cars) do
 		if other ~= car and other.pos then
 			local delta = other.pos - car.pos
 			local along = delta:Dot(direction)
-			if along > 0 and along < Config.Traffic.CarSpacing then
+			if along > 0 and along < 9 then
 				local lateral = (delta - direction * along).Magnitude
-				if lateral < 0.9 then
-					return true
+				if lateral < 0.95 and (not best or along < best) then
+					best = along
 				end
 			end
 		end
 	end
-	return false
+	return best
 end
 
 function Session:completeLeg(car)
@@ -3246,6 +3647,7 @@ function Session:completeLeg(car)
 
 		car.state = "back"
 
+		self:releaseCarReservations(car)
 		local reversed = {}
 		for i = #car.path, 1, -1 do
 			reversed[#reversed + 1] = car.path[i]
@@ -3256,7 +3658,9 @@ function Session:completeLeg(car)
 		car.currentKey = reversed[1]
 		car.waitTime = 0
 		car.retry = 0
+		car.speedFactor = 0
 		car.roadVersion = self.roadVersion
+		self:reserveIntersection(car, reversed[1])
 
 		return false
 	end
@@ -3291,6 +3695,22 @@ function Session:updateCar(car, dt)
 		return false
 	end
 
+	-- Le réseau a changé : on recalcule une seule fois, au prochain passage
+	-- de la voiture, puis roadVersion est remis à jour.
+	if car.roadVersion ~= self.roadVersion then
+		local path = self:findPath(car)
+		if path then
+			self:setCarPath(car, path)
+		else
+			self:releaseCarReservations(car)
+			car.path = nil
+			car.retry = Config.Traffic.RetryPathInterval
+			car.blocked = true
+			car.waitTime += dt
+			return false
+		end
+	end
+
 	if car.index > #car.path then
 		return self:completeLeg(car)
 	end
@@ -3302,6 +3722,7 @@ function Session:updateCar(car, dt)
 		if path then
 			self:setCarPath(car, path)
 		else
+			self:releaseCarReservations(car)
 			car.path = nil
 			car.retry = Config.Traffic.RetryPathInterval
 		end
@@ -3311,6 +3732,7 @@ function Session:updateCar(car, dt)
 	local fx, fy = Grid.parse(fromKey)
 	local tx, ty = Grid.parse(toKey)
 	if not fx or not tx then
+		self:releaseCarReservations(car)
 		car.path = nil
 		return false
 	end
@@ -3318,28 +3740,99 @@ function Session:updateCar(car, dt)
 	local fromPos = Grid.center(self.origin, fx, fy, 0.5)
 	local toPos = Grid.center(self.origin, tx, ty, 0.5)
 	local direction = (toPos - fromPos).Unit
-	-- La vitesse doit rester en studs/seconde réels : une diagonale est
-	-- plus longue qu'une case orthogonale, donc on divise par la longueur
-	-- du segment et non par la taille de la case.
 	local segmentLength = math.max((toPos - fromPos).Magnitude, 0.001)
 
-	local blocked = self:isBlockedAhead(car, direction)
+	local blocked = false
+	local targetSpeed = 1
+
+	-- Réservation d'intersection : une seule voiture à la fois au centre.
+	if car.t <= 0.001 and self.intersections[toKey] then
+		if not self:reserveIntersection(car, toKey) then
+			blocked = true
+		end
+	end
+
+	-- Distance de sécurité. On freine avant la voiture de devant, puis on
+	-- s'arrête seulement quand la garde minimale est atteinte.
+	local gap = self:frontGap(car, direction)
+	if gap then
+		if gap <= Config.Traffic.CarSpacing then
+			blocked = true
+		elseif gap < Config.Traffic.CarSpacing + 2.4 then
+			targetSpeed = math.max(0.20, (gap - Config.Traffic.CarSpacing) / 2.4)
+		end
+	end
+
+	-- Ralentissement dans les virages et à l'approche d'un carrefour.
+	local nextKey = car.path[car.index + 1]
+	if nextKey then
+		local nx, ny = Grid.parse(nextKey)
+		if nx then
+			local nextDirection = (Grid.center(self.origin, nx, ny, 0.5) - toPos).Unit
+			if nextDirection:Dot(direction) < 0.995 then
+				targetSpeed = math.min(targetSpeed, RoadConfig.Traffic.TurnSpeedFactor)
+			end
+		end
+	end
+	if self.intersections[toKey] then
+		targetSpeed = math.min(targetSpeed, RoadConfig.Traffic.IntersectionApproachSlow)
+	end
+
 	if blocked then
 		car.blocked = true
 		car.waitTime += dt
+		car.speedFactor = math.max(0, (car.speedFactor or 0) - RoadConfig.Traffic.Braking * dt)
+		-- Si la voiture n'est pas encore entrée dans l'intersection, elle
+		-- rend sa réservation pour ne pas bloquer les autres directions.
+		if car.t <= 0.001 and self.intersectionReservations[toKey] == car then
+			self.intersectionReservations[toKey] = nil
+		end
 	else
 		car.blocked = false
 		car.waitTime = math.max(0, car.waitTime - dt * 2)
-		car.t += (Config.Traffic.CarSpeed * dt) / segmentLength
+		local speedFactor = car.speedFactor or 0
+		if speedFactor < targetSpeed then
+			speedFactor = math.min(targetSpeed, speedFactor + RoadConfig.Traffic.Acceleration * dt)
+		else
+			speedFactor = math.max(targetSpeed, speedFactor - RoadConfig.Traffic.Braking * dt)
+		end
+		car.speedFactor = speedFactor
+
+		local advance = (Config.Traffic.CarSpeed * speedFactor * dt) / segmentLength
+		if gap then
+			-- Ne jamais franchir la garde minimale, même avec l'inertie.
+			local maxAdvance = (gap - Config.Traffic.CarSpacing * 0.85) / segmentLength
+			advance = math.max(0, math.min(advance, maxAdvance))
+		end
+		car.t += advance
+	end
+
+	local heading = direction
+	if car.heading then
+		local alpha = math.min(1, RoadConfig.Traffic.HeadingLerp * dt)
+		local blended = car.heading:Lerp(direction, alpha)
+		if blended.Magnitude > 0.001 then
+			heading = blended.Unit
+		end
+	end
+	car.heading = heading
+
+	local right = Vector3.new(-heading.Z, 0, heading.X)
+	local laneOffset = math.min(0.55, self.tile * 0.14)
+	local t = math.min(car.t, 1)
+	car.pos = fromPos:Lerp(toPos, t) + right * laneOffset
+	if car.part then
+		car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + heading))
 	end
 
 	if car.t >= 1 then
 		car.t = 0
 		car.index += 1
 		car.currentKey = toKey
-		car.pos = toPos
+		self:releaseCarReservation(car, fromKey)
+		car.pos = toPos + right * laneOffset
 		if car.part then
-			car.part:PivotTo(CFrame.new(toPos))
+			car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + heading))
 		end
 		if car.index > #car.path then
 			return self:completeLeg(car)
@@ -3347,14 +3840,11 @@ function Session:updateCar(car, dt)
 		return false
 	end
 
-	car.pos = fromPos:Lerp(toPos, car.t) + Vector3.new(-direction.Z, 0, direction.X) * 0.55
-	if car.part then
-		car.part:PivotTo(CFrame.lookAt(car.pos, car.pos + direction))
-	end
 	return false
 end
 
 function Session:retireCar(car)
+	self:releaseCarReservations(car)
 	if car.claim and car.dest and car.demandId and self.storeSystem then
 		self.storeSystem:releaseClaim(car.dest, car.demandId)
 		car.claim = false
@@ -3579,7 +4069,39 @@ function Session:update(dt)
 	end
 end
 
+function Session:sendRoadState()
+	if not self.player then
+		return
+	end
+	local roadCells = {}
+	for key in pairs(self.roads) do
+		roadCells[#roadCells + 1] = key
+	end
+	local bridgeCells = {}
+	for key in pairs(self.bridges) do
+		bridgeCells[#bridgeCells + 1] = key
+	end
+	local buildingCells = {}
+	for _, building in ipairs(self.buildingList) do
+		buildingCells[#buildingCells + 1] = building.key
+	end
+	Remotes.get("RoadState"):FireClient(self.player, {
+		roads = roadCells,
+		bridges = bridgeCells,
+		buildings = buildingCells,
+		budget = self.budget,
+		bridgesLeft = self.bridgesLeft,
+		count = #roadCells,
+		allowDiagonals = RoadConfig.AllowDiagonals,
+		roadVersion = self.roadVersion,
+	})
+end
+
 function Session:sendState()
+	local roadCount = 0
+	for _ in pairs(self.roads) do
+		roadCount += 1
+	end
 	Remotes.get("State"):FireClient(self.player, {
 		score = self.score,
 		week = self.week,
@@ -3597,6 +4119,7 @@ function Session:sendState()
 		destinations = #self.destinations,
 		largeStores = self.storeSystem and self.storeSystem.largeCount or 0,
 		cars = #self.cars,
+		roadsBuilt = roadCount,
 	})
 end
 
@@ -3616,7 +4139,10 @@ function Session:start()
 		weekDuration = Config.Game.WeekDuration,
 	})
 
+	self:rebuildRoadTopology()
+	self:updateBuildingConnections()
 	self:sendState()
+	self:sendRoadState()
 	if self.storeSystem then
 		self.storeSystem:broadcast()
 	end
@@ -3673,6 +4199,8 @@ function Session:destroy()
 	self.buildings = {}
 	self.buildingList = {}
 	self.roundaboutParts = {}
+	self.intersections = {}
+	self.intersectionReservations = {}
 	self.roadRibbons = {}
 	self.roadRibbonPaths = {}
 	self.ribbonEdges = {}
@@ -3684,7 +4212,7 @@ return Session
 ]]></ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">StoreSystem</string>
           <ProtectedString name="Source"><![CDATA[--[[
@@ -4280,7 +4808,7 @@ return StoreSystem
 ]]></ProtectedString>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">WorldBuilder</string>
           <ProtectedString name="Source"><![CDATA[--[[
@@ -4830,24 +5358,24 @@ return WorldBuilder
       </Item>
     </Item>
   </Item>
-  <Item class="SoundService" referent="17">
+  <Item class="SoundService" referent="19">
     <Properties>
       <string name="Name">SoundService</string>
     </Properties>
   </Item>
-  <Item class="StarterPlayer" referent="18">
+  <Item class="StarterPlayer" referent="20">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="19">
+    <Item class="StarterPlayerScripts" referent="21">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="20">
+      <Item class="Folder" referent="22">
         <Properties>
           <string name="Name">MiniMotorwaysClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="21">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">CameraController</string>
             <ProtectedString name="Source"><![CDATA[--[[
@@ -5042,17 +5570,17 @@ return CameraController
 ]]></ProtectedString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">InputController</string>
             <ProtectedString name="Source"><![CDATA[--[[
 	InputController.luau
 	Dessin des routes à la souris / au doigt.
-	Le client envoie des lots de cases au serveur ; le serveur valide.
-	En construction, aucun gros carré de visée ne suit le curseur : la route
-	apparaît directement. Un fantôme discret reste pour la gomme et le
-	rond-point. La carte garde sa taille, mais la détection favorise les
-	diagonales.
+
+	Le client construit un aperçu local, case par case. Un geste en biais est
+	résolu en chemin orthogonal : horizontal puis vertical, ou l'inverse.
+	La validation définitive et les ressources restent au serveur.
+	Échap annule le tracé en cours sans rien consommer.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -5063,15 +5591,16 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Grid = require(Shared.Grid)
+local Maps = require(Shared.Maps)
+local RoadConfig = require(Shared.RoadConfig)
+local RoadNetwork = require(Shared.RoadNetwork)
+
+local RoadPreview = require(script.Parent.RoadPreview)
 
 local InputController = {}
 InputController.__index = InputController
 
--- Le carré de visée déborde légèrement de la case : il est plus facile à
--- repérer et à poser, sans changer la taille réelle de la carte.
-local GHOST_SCALE = 1.20
-local DIAGONAL_CORNER = 0.32
-local DIAGONAL_REACH = 0.95
+local GHOST_SCALE = 1.10
 
 local function isMouseInput(input)
 	return input.UserInputType == Enum.UserInputType.MouseMovement
@@ -5097,17 +5626,30 @@ function InputController.new(callbacks)
 	self.origin = Vector3.zero
 	self.size = Config.Grid.Size
 	self.tile = Config.Grid.TileSize
+	self.map = nil
+
+	self.roads = {}
+	self.bridges = {}
+	self.buildingSet = {}
+	self.budget = Config.Roads.StartBudget
+	self.bridgesLeft = Config.Roads.StartBridges
+
 	self.dragging = false
 	self.dragTool = nil
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = nil
-	self.diagonalIntent = false
 	self.pending = {}
 	self.pendingSet = {}
 	self.erasePending = {}
 	self.eraseSet = {}
-	self.sendClock = 0
 	self.pointer = nil
+	self.hoverClock = 0
+
 	self.ghost = nil
+	self.preview = RoadPreview.new()
 	self:createGhost()
 	self:bind()
 	return self
@@ -5130,14 +5672,17 @@ local function makeGhostPart(name, size)
 end
 
 function InputController:createGhost()
-	-- Un seul carré, fin et presque à plat. Il est volontairement un peu
-	-- plus large que la case pour offrir une cible de visée confortable.
+	-- Le fantôme ne sert plus qu'au rond-point : les routes ont leur aperçu.
 	local size = Vector3.new(self.tile * GHOST_SCALE, 0.04, self.tile * GHOST_SCALE)
 	self.ghost = makeGhostPart("MM_Ghost", size)
 end
 
 function InputController:bind()
 	UserInputService.InputBegan:Connect(function(input, processed)
+		if input.KeyCode == Enum.KeyCode.Escape and self.dragging then
+			self:cancelDrag()
+			return
+		end
 		if processed or not self.enabled then
 			return
 		end
@@ -5147,7 +5692,9 @@ function InputController:bind()
 		then
 			local pointer = pointerFrom(input)
 			self.pointer = pointer
-			if self.tool == "erase" then
+			if self.tool == "camera" then
+				self:startCamera()
+			elseif self.tool == "erase" then
 				self:startErase(pointer)
 			elseif self.tool == "roundabout" then
 				self:startRoundabout(pointer)
@@ -5173,6 +5720,11 @@ function InputController:bind()
 			if self.callbacks.onToolChanged then
 				self.callbacks.onToolChanged("roundabout")
 			end
+		elseif input.KeyCode == Enum.KeyCode.Four then
+			self:setTool("camera")
+			if self.callbacks.onToolChanged then
+				self.callbacks.onToolChanged("camera")
+			end
 		elseif input.KeyCode == Enum.KeyCode.P then
 			if self.callbacks.onPauseRequest then
 				self.callbacks.onPauseRequest()
@@ -5188,19 +5740,28 @@ function InputController:bind()
 			local nextPointer = pointerFrom(input)
 			self.pointer = nextPointer
 
-			-- On mémorise si le geste est réellement en biais. La position
-			-- seule ne suffit pas : une ligne horizontale tracée près du bas
-			-- d'une case ne doit pas se transformer en diagonale.
-			local delta = input.Delta
-			local adx = math.abs(delta.X)
-			local ady = math.abs(delta.Y)
-			if adx < 0.01 and ady < 0.01 and previous then
-				adx = math.abs(nextPointer.X - previous.X)
-				ady = math.abs(nextPointer.Y - previous.Y)
+			if previous and self.enabled and self.dragging then
+				if self.dragTool == "camera" then
+					if self.callbacks.onPan then
+						self.callbacks.onPan(nextPointer.X - previous.X, nextPointer.Y - previous.Y)
+					end
+					return
+				end
+				-- Axe dominant à l'écran : il choisit l'ordre horizontal /
+				-- vertical du prochain petit segment, même quand la souris
+				-- traverse exactement une diagonale de case.
+				self.dragScreenDX += nextPointer.X - previous.X
+				self.dragScreenDY += nextPointer.Y - previous.Y
+				local adx = math.abs(self.dragScreenDX)
+				local ady = math.abs(self.dragScreenDY)
+				if math.max(adx, ady) >= 4 then
+					if adx >= ady * 1.15 then
+						self.dragAxis = "x"
+					elseif ady >= adx * 1.15 then
+						self.dragAxis = "y"
+					end
+				end
 			end
-			local biggest = math.max(adx, ady)
-			self.diagonalIntent = biggest >= 1
-				and math.min(adx, ady) >= biggest * 0.45
 		end
 
 		if processed or not self.enabled or not self.dragging then
@@ -5229,11 +5790,11 @@ function InputController:bind()
 	end)
 
 	RunService.RenderStepped:Connect(function(dt)
-		self.sendClock += dt
-		if self.sendClock >= 0.05 then
-			self.sendClock = 0
-			if self.dragging then
-				self:flush()
+		self.hoverClock += dt
+		if self.hoverClock >= 0.12 then
+			self.hoverClock = 0
+			if not self.dragging then
+				self:refreshPreview()
 			end
 		end
 		self:updateGhost()
@@ -5245,29 +5806,63 @@ function InputController:setWorld(origin, size, tile)
 	self.size = size or Config.Grid.Size
 	self.tile = tile or Config.Grid.TileSize
 	self.ghost.Size = Vector3.new(self.tile * GHOST_SCALE, 0.04, self.tile * GHOST_SCALE)
+	self.preview:setWorld(self.origin, self.tile)
+end
+
+function InputController:setMapId(mapId)
+	self.map = Maps.getById(mapId)
+	self:refreshPreview()
 end
 
 function InputController:setEnabled(value)
 	self.enabled = value == true
 	if not self.enabled then
-		self.dragging = false
-		self.dragTool = nil
-		self.lastCell = nil
-		self.diagonalIntent = false
-		self.pending = {}
-		self.pendingSet = {}
-		self.erasePending = {}
-		self.eraseSet = {}
+		self:cancelDrag()
+		self.roads = {}
+		self.bridges = {}
+		self.buildingSet = {}
+		self.preview:clear()
 		self.ghost.Transparency = 1
 	end
 end
 
 function InputController:setTool(tool)
+	if self.dragging then
+		self:cancelDrag()
+	end
 	self.tool = tool
 	self.ghost.Color = tool == "erase" and Config.Colors.Danger or Config.Colors.Teal
-	if tool == "build" then
+	if tool == "build" or tool == "erase" then
 		self.ghost.Transparency = 1
 	end
+	self:refreshPreview()
+end
+
+-- Le serveur envoie l'état réel du réseau après chaque modification.
+function InputController:applyRoadState(data)
+	if type(data) ~= "table" then
+		return
+	end
+
+	local roads = {}
+	for _, key in ipairs(data.roads or {}) do
+		roads[key] = true
+	end
+	local bridges = {}
+	for _, key in ipairs(data.bridges or {}) do
+		bridges[key] = true
+	end
+	local buildings = {}
+	for _, key in ipairs(data.buildings or {}) do
+		buildings[key] = true
+	end
+
+	self.roads = roads
+	self.bridges = bridges
+	self.buildingSet = buildings
+	self.budget = tonumber(data.budget) or self.budget
+	self.bridgesLeft = tonumber(data.bridgesLeft) or self.bridgesLeft
+	self:refreshPreview()
 end
 
 function InputController:cellAt(position)
@@ -5297,8 +5892,6 @@ function InputController:cellAt(position)
 	end
 
 	local hit = ray.Origin + ray.Direction * distance
-	-- On utilise self.tile plutôt que la constante globale : la sélection
-	-- reste exacte même si la carte fournit une taille de case différente.
 	local u = (hit.X - self.origin.X) / self.tile
 	local v = (hit.Z - self.origin.Z) / self.tile
 	local cellX = math.floor(u)
@@ -5306,35 +5899,6 @@ function InputController:cellAt(position)
 	if not Grid.inBounds(cellX, cellY) then
 		return nil
 	end
-
-	-- Détection diagonale plus tolérante : quand le curseur approche du coin
-	-- partagé avec la dernière case, on privilégie la case diagonale. Un geste
-	-- en biais ne fabrique donc plus un escalier en passant par la case
-	-- horizontale ou verticale voisine.
-	if self.dragging and self.diagonalIntent and self.lastCell then
-		local lx, ly = self.lastCell[1], self.lastCell[2]
-		local dx = u - (lx + 0.5)
-		local dy = v - (ly + 0.5)
-		local nearLast = dx * dx + dy * dy <= 1.45 * 1.45
-		local leftLast = cellX ~= lx or cellY ~= ly
-		if leftLast
-			and nearLast
-			and math.abs(dx) >= DIAGONAL_CORNER
-			and math.abs(dy) >= DIAGONAL_CORNER
-		then
-			local sx = dx > 0 and 1 or -1
-			local sy = dy > 0 and 1 or -1
-			local nx, ny = lx + sx, ly + sy
-			if Grid.inBounds(nx, ny) then
-				local ddx = u - (nx + 0.5)
-				local ddy = v - (ny + 0.5)
-				if ddx * ddx + ddy * ddy <= DIAGONAL_REACH * DIAGONAL_REACH then
-					return { nx, ny }
-				end
-			end
-		end
-	end
-
 	return { cellX, cellY }
 end
 
@@ -5345,9 +5909,13 @@ function InputController:startBuild(position)
 	end
 	self.dragging = true
 	self.dragTool = "build"
+	self.dragStart = cell
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = cell
-	self.diagonalIntent = false
 	self:addBuild(cell[1], cell[2])
+	self:refreshPreview()
 end
 
 function InputController:startErase(position)
@@ -5357,9 +5925,22 @@ function InputController:startErase(position)
 	end
 	self.dragging = true
 	self.dragTool = "erase"
+	self.dragStart = cell
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = cell
-	self.diagonalIntent = false
 	self:addErase(cell[1], cell[2])
+	self:refreshPreview()
+end
+
+function InputController:startCamera()
+	self.dragging = true
+	self.dragTool = "camera"
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.lastCell = nil
+	self.preview:clear()
 end
 
 function InputController:startRoundabout(position)
@@ -5380,35 +5961,30 @@ function InputController:handleCell(x, y)
 		self.lastCell = { x, y }
 	end
 
-	local lastX, lastY = self.lastCell[1], self.lastCell[2]
-	local cx, cy = lastX, lastY
-	local guard = 0
-
-	-- On avance simultanément sur X et Y : un geste en diagonale dessine
-	-- donc une vraie ligne à 45°, puis termine tout droit si les deux axes
-	-- n'ont pas la même longueur. Sans cela, le client fabriquait un escalier
-	-- de cases horizontales/verticales et le serveur ne voyait jamais de
-	-- diagonale.
-	while (cx ~= x or cy ~= y) and guard < 128 do
-		local stepX = 0
-		local stepY = 0
-		if cx ~= x then
-			stepX = x > cx and 1 or -1
+	-- On conserve l'axe dominant du geste pour éviter les zigzags : un léger
+	-- mouvement latéral ne fait pas changer l'ordre horizontal / vertical.
+	if self.dragStart then
+		local ax = x - self.dragStart[1]
+		local ay = y - self.dragStart[2]
+		local threshold = RoadConfig.Input.DragAxisThreshold
+		if math.abs(ax) >= math.abs(ay) + threshold then
+			self.dragAxis = "x"
+		elseif math.abs(ay) >= math.abs(ax) + threshold then
+			self.dragAxis = "y"
 		end
-		if cy ~= y then
-			stepY = y > cy and 1 or -1
-		end
-		cx += stepX
-		cy += stepY
-		if self.dragTool == "erase" then
-			self:addErase(cx, cy)
-		else
-			self:addBuild(cx, cy)
-		end
-		guard += 1
 	end
 
+	local lastX, lastY = self.lastCell[1], self.lastCell[2]
+	local path = RoadNetwork.manhattanPath(lastX, lastY, x, y, self.dragAxis)
+	for _, step in ipairs(path) do
+		if self.dragTool == "erase" then
+			self:addErase(step[1], step[2])
+		else
+			self:addBuild(step[1], step[2])
+		end
+	end
 	self.lastCell = { x, y }
+	self:refreshPreview()
 end
 
 function InputController:addBuild(x, y)
@@ -5429,45 +6005,161 @@ function InputController:addErase(x, y)
 	table.insert(self.erasePending, key)
 end
 
-function InputController:flush()
-	if #self.pending > 0 then
+function InputController:isWater(x, y)
+	if not self.map then
+		return false
+	end
+	return Maps.isWater(self.map, x, y)
+end
+
+-- Recalcule les cases d'aperçu et leur validité locale. Le serveur reste
+-- l'autorité finale, mais le joueur voit immédiatement les refus évidents.
+function InputController:refreshPreview()
+	if not self.enabled then
+		self.preview:clear()
+		return
+	end
+
+	if self.dragging and self.dragTool == "build" then
+		local cells = {}
+		local budgetLeft = self.budget
+		local bridgesLeft = self.bridgesLeft
+		for _, cell in ipairs(self.pending) do
+			local x, y = cell[1], cell[2]
+			local key = Grid.key(x, y)
+			local valid = Grid.inBounds(x, y)
+				and not self.roads[key]
+				and not self.buildingSet[key]
+			if valid and self:isWater(x, y) then
+				if bridgesLeft > 0 then
+					bridgesLeft -= 1
+				else
+					valid = false
+				end
+			end
+			if valid then
+				if budgetLeft > 0 then
+					budgetLeft -= 1
+				else
+					valid = false
+				end
+			end
+			cells[#cells + 1] = { x = x, y = y, valid = valid }
+		end
+		self.preview:setCells(cells)
+		return
+	end
+
+	if self.dragging and self.dragTool == "erase" then
+		local cells = {}
+		for _, key in ipairs(self.erasePending) do
+			local x, y = Grid.parse(key)
+			if x then
+				cells[#cells + 1] = { x = x, y = y, valid = self.roads[key] == true }
+			end
+		end
+		self.preview:setCells(cells)
+		return
+	end
+
+	if self.dragging and self.dragTool == "camera" then
+		self.preview:clear()
+		return
+	end
+
+	if self.tool ~= "build" and self.tool ~= "erase" then
+		self.preview:clear()
+		return
+	end
+
+	local cell = self.pointer and self:cellAt(self.pointer) or nil
+	if not cell then
+		self.preview:clear()
+		return
+	end
+
+	local x, y = cell[1], cell[2]
+	local key = Grid.key(x, y)
+	local valid
+	if self.tool == "erase" then
+		valid = self.roads[key] == true
+	else
+		valid = Grid.inBounds(x, y)
+			and not self.roads[key]
+			and not self.buildingSet[key]
+		if valid and self:isWater(x, y) then
+			valid = self.bridgesLeft > 0
+		end
+		if valid then
+			valid = self.budget > 0
+		end
+	end
+	self.preview:setCells({ { x = x, y = y, valid = valid, hover = true } })
+end
+
+function InputController:commit()
+	if self.dragTool == "build" then
 		local batch = self.pending
 		self.pending = {}
 		self.pendingSet = {}
-		if self.callbacks.onDraw then
-			self.callbacks.onDraw(batch)
+		if #batch > 0 and self.callbacks.onDraw then
+			local maxCells = RoadConfig.Input.MaxCellsPerRequest
+			for index = 1, #batch, maxCells do
+				local chunk = {}
+				local last = math.min(index + maxCells - 1, #batch)
+				for i = index, last do
+					chunk[#chunk + 1] = batch[i]
+				end
+				self.callbacks.onDraw(chunk)
+			end
 		end
-	end
-
-	if #self.erasePending > 0 then
+	elseif self.dragTool == "erase" then
 		local batch = self.erasePending
 		self.erasePending = {}
 		self.eraseSet = {}
-		if self.callbacks.onErase then
-			for _, key in ipairs(batch) do
-				self.callbacks.onErase(key)
+		if #batch > 0 then
+			if self.callbacks.onEraseMany then
+				self.callbacks.onEraseMany(batch)
+			elseif self.callbacks.onErase then
+				for _, key in ipairs(batch) do
+					self.callbacks.onErase(key)
+				end
 			end
 		end
 	end
 end
 
-function InputController:endDrag()
-	self:flush()
+function InputController:resetDrag()
 	self.dragging = false
 	self.dragTool = nil
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = nil
-	self.diagonalIntent = false
+end
+
+function InputController:cancelDrag()
+	self.pending = {}
+	self.pendingSet = {}
+	self.erasePending = {}
+	self.eraseSet = {}
+	self:resetDrag()
+	if self.preview then
+		self.preview:clear()
+	end
+end
+
+function InputController:endDrag()
+	if self.dragging and (self.dragTool == "build" or self.dragTool == "erase") then
+		self:commit()
+	end
+	self:resetDrag()
+	self:refreshPreview()
 end
 
 function InputController:updateGhost()
-	if not self.enabled then
-		self.ghost.Transparency = 1
-		return
-	end
-
-	-- En mode construction, on cache complètement le gros carré de visée :
-	-- la route qui apparaît sous le curseur suffit, comme dans la vidéo.
-	if self.tool == "build" then
+	if not self.enabled or self.tool ~= "roundabout" then
 		self.ghost.Transparency = 1
 		return
 	end
@@ -5478,16 +6170,16 @@ function InputController:updateGhost()
 		return
 	end
 
-	self.ghost.CFrame = CFrame.new(Grid.center(self.origin, cell[1], cell[2], 0.44))
-	self.ghost.Color = self.tool == "erase" and Config.Colors.Danger or Config.Colors.Teal
-	self.ghost.Transparency = 0.5
+	self.ghost.CFrame = CFrame.new(Grid.center(self.origin, cell[1], cell[2], 0.52))
+	self.ghost.Color = Config.Colors.Teal
+	self.ghost.Transparency = 0.45
 end
 
 return InputController
 ]]></ProtectedString>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="23">
+        <Item class="LocalScript" referent="25">
           <Properties>
             <string name="Name">Main</string>
             <ProtectedString name="Source"><![CDATA[--[[
@@ -5627,6 +6319,9 @@ input = InputController.new({
 	onErase = function(key)
 		remote("EraseRoad"):FireServer(key)
 	end,
+	onEraseMany = function(keys)
+		remote("EraseRoads"):FireServer(keys)
+	end,
 	onRoundabout = function(x, y)
 		remote("PlaceRoundabout"):FireServer(x, y)
 	end,
@@ -5636,6 +6331,14 @@ input = InputController.new({
 		end
 	end,
 	onPauseRequest = pauseGame,
+	onPan = function(deltaX, deltaY)
+		local camera = Workspace.CurrentCamera
+		local mapSize = CameraController.getMapSize()
+		if camera and mapSize > 0 then
+			local scale = mapSize / math.max(camera.ViewportSize.Y, 1) / CameraController.getZoom()
+			CameraController.pan(-deltaX * scale, -deltaY * scale)
+		end
+	end,
 })
 
 local panning = false
@@ -5677,6 +6380,7 @@ remote("GameStarted").OnClientEvent:Connect(function(data)
 
 	CameraController.focus(data.origin, data.size, data.tile)
 	input:setWorld(data.origin, data.size, data.tile)
+	input:setMapId(data.mapId)
 	input:setEnabled(true)
 	input:setTool("build")
 	hud:setTool("build")
@@ -5691,6 +6395,12 @@ end)
 
 remote("StoreState").OnClientEvent:Connect(function(data)
 	storeVisuals:apply(data)
+end)
+
+remote("RoadState").OnClientEvent:Connect(function(data)
+	if input then
+		input:applyRoadState(data)
+	end
 end)
 
 remote("WeekChoice").OnClientEvent:Connect(function(data)
@@ -5725,7 +6435,115 @@ end)
 ]]></ProtectedString>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="26">
+          <Properties>
+            <string name="Name">RoadPreview</string>
+            <ProtectedString name="Source"><![CDATA[--[[
+	RoadPreview.luau
+	Aperçu local des cases de route. Aucun objet n'est envoyé au serveur :
+	le client affiche seulement ce qu'il est en train de dessiner.
+	Les cases valides sont menthe, les cases refusées sont corail.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Grid = require(Shared.Grid)
+local RoadConfig = require(Shared.RoadConfig)
+
+local RoadPreview = {}
+RoadPreview.__index = RoadPreview
+
+local function makePart()
+	local part = Instance.new("Part")
+	part.Name = "RoadPreviewCell"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.SmoothPlastic
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.Transparency = 1
+	part.Size = Vector3.new(1, RoadConfig.Visual.PreviewHeight, 1)
+	part.Parent = nil
+	return part
+end
+
+function RoadPreview.new()
+	local self = setmetatable({}, RoadPreview)
+	self.origin = Vector3.zero
+	self.tile = Config.Grid.TileSize
+	self.parts = {}
+	self.folder = Instance.new("Folder")
+	self.folder.Name = "MM_RoadPreview"
+	self.folder.Parent = Workspace
+	return self
+end
+
+function RoadPreview:setWorld(origin, tile)
+	self.origin = origin or self.origin
+	self.tile = tile or self.tile
+end
+
+function RoadPreview:getPart(index)
+	local part = self.parts[index]
+	if not part then
+		part = makePart()
+		part.Parent = self.folder
+		self.parts[index] = part
+	end
+	return part
+end
+
+function RoadPreview:clear()
+	for _, part in ipairs(self.parts) do
+		part.Transparency = 1
+	end
+end
+
+function RoadPreview:destroy()
+	if self.folder then
+		self.folder:Destroy()
+		self.folder = nil
+	end
+	self.parts = {}
+end
+
+-- cells : { {x, y, valid = true/false, hover = true/false}, ... }
+function RoadPreview:setCells(cells)
+	local count = 0
+	for index, cell in ipairs(cells or {}) do
+		if type(cell) == "table" and cell.x and cell.y then
+			local part = self:getPart(index)
+			local size = self.tile * RoadConfig.Visual.PreviewScale
+			part.Size = Vector3.new(size, RoadConfig.Visual.PreviewHeight, size)
+			part.CFrame = CFrame.new(Grid.center(self.origin, cell.x, cell.y, RoadConfig.Visual.PreviewY))
+			if cell.valid == false then
+				part.Color = RoadConfig.Visual.PreviewInvalidColor
+			else
+				part.Color = RoadConfig.Visual.PreviewValidColor
+			end
+			part.Transparency = cell.hover
+				and RoadConfig.Visual.PreviewHoverTransparency
+				or RoadConfig.Visual.PreviewTransparency
+			count = index
+		end
+	end
+
+	for index = count + 1, #self.parts do
+		self.parts[index].Transparency = 1
+	end
+end
+
+return RoadPreview
+]]></ProtectedString>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">StoreVisualController</string>
             <ProtectedString name="Source"><![CDATA[--[[
@@ -6102,11 +6920,11 @@ return StoreVisualController
 ]]></ProtectedString>
           </Properties>
         </Item>
-        <Item class="Folder" referent="25">
+        <Item class="Folder" referent="28">
           <Properties>
             <string name="Name">UI</string>
           </Properties>
-          <Item class="ModuleScript" referent="26">
+          <Item class="ModuleScript" referent="29">
             <Properties>
               <string name="Name">HUD</string>
               <ProtectedString name="Source"><![CDATA[--[[
@@ -6260,6 +7078,43 @@ function HUD:iconRoad(parent)
 			BackgroundColor3 = Theme.White,
 			BorderSizePixel = 0,
 			Rotation = -18,
+		})
+	end
+	return holder
+end
+
+function HUD:iconPan(parent)
+	local holder = Theme.new("Frame", {
+		Parent = parent,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	})
+	Theme.new("Frame", {
+		Parent = holder,
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(20, 4),
+		BackgroundColor3 = Theme.White,
+		BorderSizePixel = 0,
+	})
+	Theme.new("Frame", {
+		Parent = holder,
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(4, 20),
+		BackgroundColor3 = Theme.White,
+		BorderSizePixel = 0,
+	})
+	for _, offset in ipairs({
+		{ 0.5, 0.20, 8, 8 },
+		{ 0.5, 0.80, 8, 8 },
+		{ 0.20, 0.5, 8, 8 },
+		{ 0.80, 0.5, 8, 8 },
+	}) do
+		Theme.circle(holder, offset[3], Theme.White, {
+			Position = UDim2.fromScale(offset[1], offset[2]),
+			AnchorPoint = Vector2.new(0.5, 0.5),
 		})
 	end
 	return holder
@@ -6678,6 +7533,35 @@ function HUD:build()
 		ZIndex = 45,
 	})
 
+	-- Compteur de routes réellement posées. Il complète le budget restant.
+	local builtChip = Theme.new("Frame", {
+		Parent = resources,
+		Size = UDim2.fromOffset(72, 52),
+		BackgroundColor3 = Theme.PanelSoft,
+		BorderSizePixel = 0,
+		LayoutOrder = 4,
+		ZIndex = 43,
+	})
+	Theme.corner(builtChip, 10)
+	Theme.label(builtChip, "POSÉES", {
+		Position = UDim2.fromOffset(6, 8),
+		Size = UDim2.fromOffset(60, 12),
+		TextSize = 9,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.InkSoft,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 44,
+	})
+	self.builtValue = Theme.label(builtChip, "0", {
+		Position = UDim2.fromOffset(6, 21),
+		Size = UDim2.fromOffset(60, 24),
+		TextSize = 18,
+		Font = Theme.FontBlack,
+		TextColor3 = Theme.Ink,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 44,
+	})
+
 	-- Toast.
 	self.toastLabel = Theme.label(gui, "", {
 		Position = UDim2.fromScale(0.5, 0.12),
@@ -6697,7 +7581,7 @@ function HUD:build()
 	-- Aide en bas.
 	self.hint = Theme.label(
 		gui,
-		"Glissez pour tracer  ·  clic droit pour effacer  ·  molette pour zoomer  ·  clic milieu pour déplacer",
+		"Glissez pour tracer  ·  Échap pour annuler  ·  clic droit pour effacer  ·  molette pour zoomer  ·  clic milieu pour déplacer",
 		{
 			Position = UDim2.fromScale(0.5, 0.895),
 			AnchorPoint = Vector2.new(0.5, 1),
@@ -6715,7 +7599,7 @@ function HUD:build()
 		Parent = gui,
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.fromScale(0.982, 0.53),
-		Size = UDim2.fromOffset(58, 132),
+		Size = UDim2.fromOffset(58, 238),
 		BackgroundColor3 = Theme.PanelDark,
 		BorderSizePixel = 0,
 		ZIndex = 46,
@@ -6774,6 +7658,9 @@ function HUD:build()
 	end)
 	self.toolButtons.roundabout = makeToolButton("roundabout", 3, function(button)
 		self:iconRoundabout(button)
+	end)
+	self.toolButtons.camera = makeToolButton("camera", 4, function(button)
+		self:iconPan(button)
 	end)
 	self.toolButtons.roundabout.Visible = false
 	self:setTool("build")
@@ -7108,7 +7995,7 @@ function HUD:applyResponsive()
 	self.hint.Visible = not short
 
 	self.toolPill.Position = UDim2.fromScale(0.982, portrait and 0.58 or 0.53)
-	self.toolPill.Size = UDim2.fromOffset(portrait and 52 or 58, self.roundabouts > 0 and 190 or 132)
+	self.toolPill.Size = UDim2.fromOffset(portrait and 52 or 58, self.roundabouts > 0 and 290 or 238)
 
 	self.circulation.Position = UDim2.fromScale(0.022, portrait and 0.075 or 0.082)
 	self.circulation.Size = UDim2.fromOffset(portrait and 150 or 176, 38)
@@ -7145,7 +8032,7 @@ function HUD:setRoundabouts(value)
 	self.toolButtons.roundabout.Visible = self.roundabouts > 0
 	self.toolPill.Size = UDim2.fromOffset(
 		self.gui.AbsoluteSize.X < 760 and 52 or 58,
-		self.roundabouts > 0 and 190 or 132
+		self.roundabouts > 0 and 290 or 238
 	)
 	if self.tool == "roundabout" and self.roundabouts <= 0 then
 		self:setTool("build")
@@ -7181,6 +8068,7 @@ function HUD:showGame(data, map)
 	self.budgetValue.Text = "—"
 	self.bridgeValue.Text = "—"
 	self.roundaboutValue.Text = "0"
+	self.builtValue.Text = "0"
 	self.mapName = map and map.name or tostring(data.mapId)
 	self:setTool("build")
 	self:setSatisfaction(100)
@@ -7227,6 +8115,7 @@ function HUD:setState(state)
 	self.dayLabel.Text = DAYS[(((state.week or 1) - 1) % #DAYS) + 1]
 	self.budgetValue.Text = tostring(state.budget or 0)
 	self.bridgeValue.Text = tostring(state.bridges or 0)
+	self.builtValue.Text = tostring(state.roadsBuilt or 0)
 	self:setRoundabouts(state.roundabouts or 0)
 	local progress = clamp01(state.weekProgress or 0)
 	self.clockMinutePivot.Rotation = progress * 360
@@ -7409,7 +8298,7 @@ return HUD
 ]]></ProtectedString>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="27">
+          <Item class="ModuleScript" referent="30">
             <Properties>
               <string name="Name">Lobby</string>
               <ProtectedString name="Source"><![CDATA[--[[
@@ -9071,7 +9960,7 @@ return Lobby
 ]]></ProtectedString>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="28">
+          <Item class="ModuleScript" referent="31">
             <Properties>
               <string name="Name">MapPreview</string>
               <ProtectedString name="Source"><![CDATA[--[[
@@ -9408,7 +10297,7 @@ return MapPreview
 ]]></ProtectedString>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="29">
+          <Item class="ModuleScript" referent="32">
             <Properties>
               <string name="Name">Theme</string>
               <ProtectedString name="Source"><![CDATA[--[[
@@ -9643,7 +10532,7 @@ return Theme
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="30">
+  <Item class="Workspace" referent="33">
     <Properties>
       <string name="Name">Workspace</string>
       <float name="Gravity">196.2</float>

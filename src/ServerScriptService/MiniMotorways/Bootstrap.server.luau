@@ -14,6 +14,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Maps = require(Shared.Maps)
 local Remotes = require(Shared.Remotes)
+local SharedRoadConfig = require(Shared.RoadConfig)
 
 local Session = require(script.Parent.Session)
 local Profile = require(script.Parent.Profile)
@@ -83,7 +84,7 @@ end)
 
 Remotes.get("DrawRoad").OnServerEvent:Connect(function(player, cells)
 	local session = sessions[player]
-	if not session or type(cells) ~= "table" or #cells > 128 then
+	if not session or type(cells) ~= "table" or #cells > SharedRoadConfig.Input.MaxCellsPerRequest then
 		return
 	end
 	session:drawRoad(cells)
@@ -93,6 +94,13 @@ Remotes.get("EraseRoad").OnServerEvent:Connect(function(player, key)
 	local session = sessions[player]
 	if session and type(key) == "string" then
 		session:eraseRoad(key)
+	end
+end)
+
+Remotes.get("EraseRoads").OnServerEvent:Connect(function(player, keys)
+	local session = sessions[player]
+	if session and type(keys) == "table" and #keys <= SharedRoadConfig.Input.MaxCellsPerRequest then
+		session:eraseRoads(keys)
 	end
 end)
 

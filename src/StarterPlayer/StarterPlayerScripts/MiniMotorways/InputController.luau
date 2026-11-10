@@ -1,11 +1,11 @@
 --[[
 	InputController.luau
 	Dessin des routes à la souris / au doigt.
-	Le client envoie des lots de cases au serveur ; le serveur valide.
-	En construction, aucun gros carré de visée ne suit le curseur : la route
-	apparaît directement. Un fantôme discret reste pour la gomme et le
-	rond-point. La carte garde sa taille, mais la détection favorise les
-	diagonales.
+
+	Le client construit un aperçu local, case par case. Un geste en biais est
+	résolu en chemin orthogonal : horizontal puis vertical, ou l'inverse.
+	La validation définitive et les ressources restent au serveur.
+	Échap annule le tracé en cours sans rien consommer.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,15 +16,16 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Grid = require(Shared.Grid)
+local Maps = require(Shared.Maps)
+local RoadConfig = require(Shared.RoadConfig)
+local RoadNetwork = require(Shared.RoadNetwork)
+
+local RoadPreview = require(script.Parent.RoadPreview)
 
 local InputController = {}
 InputController.__index = InputController
 
--- Le carré de visée déborde légèrement de la case : il est plus facile à
--- repérer et à poser, sans changer la taille réelle de la carte.
-local GHOST_SCALE = 1.20
-local DIAGONAL_CORNER = 0.32
-local DIAGONAL_REACH = 0.95
+local GHOST_SCALE = 1.10
 
 local function isMouseInput(input)
 	return input.UserInputType == Enum.UserInputType.MouseMovement
@@ -50,17 +51,30 @@ function InputController.new(callbacks)
 	self.origin = Vector3.zero
 	self.size = Config.Grid.Size
 	self.tile = Config.Grid.TileSize
+	self.map = nil
+
+	self.roads = {}
+	self.bridges = {}
+	self.buildingSet = {}
+	self.budget = Config.Roads.StartBudget
+	self.bridgesLeft = Config.Roads.StartBridges
+
 	self.dragging = false
 	self.dragTool = nil
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = nil
-	self.diagonalIntent = false
 	self.pending = {}
 	self.pendingSet = {}
 	self.erasePending = {}
 	self.eraseSet = {}
-	self.sendClock = 0
 	self.pointer = nil
+	self.hoverClock = 0
+
 	self.ghost = nil
+	self.preview = RoadPreview.new()
 	self:createGhost()
 	self:bind()
 	return self
@@ -83,14 +97,17 @@ local function makeGhostPart(name, size)
 end
 
 function InputController:createGhost()
-	-- Un seul carré, fin et presque à plat. Il est volontairement un peu
-	-- plus large que la case pour offrir une cible de visée confortable.
+	-- Le fantôme ne sert plus qu'au rond-point : les routes ont leur aperçu.
 	local size = Vector3.new(self.tile * GHOST_SCALE, 0.04, self.tile * GHOST_SCALE)
 	self.ghost = makeGhostPart("MM_Ghost", size)
 end
 
 function InputController:bind()
 	UserInputService.InputBegan:Connect(function(input, processed)
+		if input.KeyCode == Enum.KeyCode.Escape and self.dragging then
+			self:cancelDrag()
+			return
+		end
 		if processed or not self.enabled then
 			return
 		end
@@ -100,7 +117,9 @@ function InputController:bind()
 		then
 			local pointer = pointerFrom(input)
 			self.pointer = pointer
-			if self.tool == "erase" then
+			if self.tool == "camera" then
+				self:startCamera()
+			elseif self.tool == "erase" then
 				self:startErase(pointer)
 			elseif self.tool == "roundabout" then
 				self:startRoundabout(pointer)
@@ -126,6 +145,11 @@ function InputController:bind()
 			if self.callbacks.onToolChanged then
 				self.callbacks.onToolChanged("roundabout")
 			end
+		elseif input.KeyCode == Enum.KeyCode.Four then
+			self:setTool("camera")
+			if self.callbacks.onToolChanged then
+				self.callbacks.onToolChanged("camera")
+			end
 		elseif input.KeyCode == Enum.KeyCode.P then
 			if self.callbacks.onPauseRequest then
 				self.callbacks.onPauseRequest()
@@ -141,19 +165,28 @@ function InputController:bind()
 			local nextPointer = pointerFrom(input)
 			self.pointer = nextPointer
 
-			-- On mémorise si le geste est réellement en biais. La position
-			-- seule ne suffit pas : une ligne horizontale tracée près du bas
-			-- d'une case ne doit pas se transformer en diagonale.
-			local delta = input.Delta
-			local adx = math.abs(delta.X)
-			local ady = math.abs(delta.Y)
-			if adx < 0.01 and ady < 0.01 and previous then
-				adx = math.abs(nextPointer.X - previous.X)
-				ady = math.abs(nextPointer.Y - previous.Y)
+			if previous and self.enabled and self.dragging then
+				if self.dragTool == "camera" then
+					if self.callbacks.onPan then
+						self.callbacks.onPan(nextPointer.X - previous.X, nextPointer.Y - previous.Y)
+					end
+					return
+				end
+				-- Axe dominant à l'écran : il choisit l'ordre horizontal /
+				-- vertical du prochain petit segment, même quand la souris
+				-- traverse exactement une diagonale de case.
+				self.dragScreenDX += nextPointer.X - previous.X
+				self.dragScreenDY += nextPointer.Y - previous.Y
+				local adx = math.abs(self.dragScreenDX)
+				local ady = math.abs(self.dragScreenDY)
+				if math.max(adx, ady) >= 4 then
+					if adx >= ady * 1.15 then
+						self.dragAxis = "x"
+					elseif ady >= adx * 1.15 then
+						self.dragAxis = "y"
+					end
+				end
 			end
-			local biggest = math.max(adx, ady)
-			self.diagonalIntent = biggest >= 1
-				and math.min(adx, ady) >= biggest * 0.45
 		end
 
 		if processed or not self.enabled or not self.dragging then
@@ -182,11 +215,11 @@ function InputController:bind()
 	end)
 
 	RunService.RenderStepped:Connect(function(dt)
-		self.sendClock += dt
-		if self.sendClock >= 0.05 then
-			self.sendClock = 0
-			if self.dragging then
-				self:flush()
+		self.hoverClock += dt
+		if self.hoverClock >= 0.12 then
+			self.hoverClock = 0
+			if not self.dragging then
+				self:refreshPreview()
 			end
 		end
 		self:updateGhost()
@@ -198,29 +231,63 @@ function InputController:setWorld(origin, size, tile)
 	self.size = size or Config.Grid.Size
 	self.tile = tile or Config.Grid.TileSize
 	self.ghost.Size = Vector3.new(self.tile * GHOST_SCALE, 0.04, self.tile * GHOST_SCALE)
+	self.preview:setWorld(self.origin, self.tile)
+end
+
+function InputController:setMapId(mapId)
+	self.map = Maps.getById(mapId)
+	self:refreshPreview()
 end
 
 function InputController:setEnabled(value)
 	self.enabled = value == true
 	if not self.enabled then
-		self.dragging = false
-		self.dragTool = nil
-		self.lastCell = nil
-		self.diagonalIntent = false
-		self.pending = {}
-		self.pendingSet = {}
-		self.erasePending = {}
-		self.eraseSet = {}
+		self:cancelDrag()
+		self.roads = {}
+		self.bridges = {}
+		self.buildingSet = {}
+		self.preview:clear()
 		self.ghost.Transparency = 1
 	end
 end
 
 function InputController:setTool(tool)
+	if self.dragging then
+		self:cancelDrag()
+	end
 	self.tool = tool
 	self.ghost.Color = tool == "erase" and Config.Colors.Danger or Config.Colors.Teal
-	if tool == "build" then
+	if tool == "build" or tool == "erase" then
 		self.ghost.Transparency = 1
 	end
+	self:refreshPreview()
+end
+
+-- Le serveur envoie l'état réel du réseau après chaque modification.
+function InputController:applyRoadState(data)
+	if type(data) ~= "table" then
+		return
+	end
+
+	local roads = {}
+	for _, key in ipairs(data.roads or {}) do
+		roads[key] = true
+	end
+	local bridges = {}
+	for _, key in ipairs(data.bridges or {}) do
+		bridges[key] = true
+	end
+	local buildings = {}
+	for _, key in ipairs(data.buildings or {}) do
+		buildings[key] = true
+	end
+
+	self.roads = roads
+	self.bridges = bridges
+	self.buildingSet = buildings
+	self.budget = tonumber(data.budget) or self.budget
+	self.bridgesLeft = tonumber(data.bridgesLeft) or self.bridgesLeft
+	self:refreshPreview()
 end
 
 function InputController:cellAt(position)
@@ -250,8 +317,6 @@ function InputController:cellAt(position)
 	end
 
 	local hit = ray.Origin + ray.Direction * distance
-	-- On utilise self.tile plutôt que la constante globale : la sélection
-	-- reste exacte même si la carte fournit une taille de case différente.
 	local u = (hit.X - self.origin.X) / self.tile
 	local v = (hit.Z - self.origin.Z) / self.tile
 	local cellX = math.floor(u)
@@ -259,35 +324,6 @@ function InputController:cellAt(position)
 	if not Grid.inBounds(cellX, cellY) then
 		return nil
 	end
-
-	-- Détection diagonale plus tolérante : quand le curseur approche du coin
-	-- partagé avec la dernière case, on privilégie la case diagonale. Un geste
-	-- en biais ne fabrique donc plus un escalier en passant par la case
-	-- horizontale ou verticale voisine.
-	if self.dragging and self.diagonalIntent and self.lastCell then
-		local lx, ly = self.lastCell[1], self.lastCell[2]
-		local dx = u - (lx + 0.5)
-		local dy = v - (ly + 0.5)
-		local nearLast = dx * dx + dy * dy <= 1.45 * 1.45
-		local leftLast = cellX ~= lx or cellY ~= ly
-		if leftLast
-			and nearLast
-			and math.abs(dx) >= DIAGONAL_CORNER
-			and math.abs(dy) >= DIAGONAL_CORNER
-		then
-			local sx = dx > 0 and 1 or -1
-			local sy = dy > 0 and 1 or -1
-			local nx, ny = lx + sx, ly + sy
-			if Grid.inBounds(nx, ny) then
-				local ddx = u - (nx + 0.5)
-				local ddy = v - (ny + 0.5)
-				if ddx * ddx + ddy * ddy <= DIAGONAL_REACH * DIAGONAL_REACH then
-					return { nx, ny }
-				end
-			end
-		end
-	end
-
 	return { cellX, cellY }
 end
 
@@ -298,9 +334,13 @@ function InputController:startBuild(position)
 	end
 	self.dragging = true
 	self.dragTool = "build"
+	self.dragStart = cell
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = cell
-	self.diagonalIntent = false
 	self:addBuild(cell[1], cell[2])
+	self:refreshPreview()
 end
 
 function InputController:startErase(position)
@@ -310,9 +350,22 @@ function InputController:startErase(position)
 	end
 	self.dragging = true
 	self.dragTool = "erase"
+	self.dragStart = cell
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = cell
-	self.diagonalIntent = false
 	self:addErase(cell[1], cell[2])
+	self:refreshPreview()
+end
+
+function InputController:startCamera()
+	self.dragging = true
+	self.dragTool = "camera"
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.lastCell = nil
+	self.preview:clear()
 end
 
 function InputController:startRoundabout(position)
@@ -333,35 +386,30 @@ function InputController:handleCell(x, y)
 		self.lastCell = { x, y }
 	end
 
-	local lastX, lastY = self.lastCell[1], self.lastCell[2]
-	local cx, cy = lastX, lastY
-	local guard = 0
-
-	-- On avance simultanément sur X et Y : un geste en diagonale dessine
-	-- donc une vraie ligne à 45°, puis termine tout droit si les deux axes
-	-- n'ont pas la même longueur. Sans cela, le client fabriquait un escalier
-	-- de cases horizontales/verticales et le serveur ne voyait jamais de
-	-- diagonale.
-	while (cx ~= x or cy ~= y) and guard < 128 do
-		local stepX = 0
-		local stepY = 0
-		if cx ~= x then
-			stepX = x > cx and 1 or -1
+	-- On conserve l'axe dominant du geste pour éviter les zigzags : un léger
+	-- mouvement latéral ne fait pas changer l'ordre horizontal / vertical.
+	if self.dragStart then
+		local ax = x - self.dragStart[1]
+		local ay = y - self.dragStart[2]
+		local threshold = RoadConfig.Input.DragAxisThreshold
+		if math.abs(ax) >= math.abs(ay) + threshold then
+			self.dragAxis = "x"
+		elseif math.abs(ay) >= math.abs(ax) + threshold then
+			self.dragAxis = "y"
 		end
-		if cy ~= y then
-			stepY = y > cy and 1 or -1
-		end
-		cx += stepX
-		cy += stepY
-		if self.dragTool == "erase" then
-			self:addErase(cx, cy)
-		else
-			self:addBuild(cx, cy)
-		end
-		guard += 1
 	end
 
+	local lastX, lastY = self.lastCell[1], self.lastCell[2]
+	local path = RoadNetwork.manhattanPath(lastX, lastY, x, y, self.dragAxis)
+	for _, step in ipairs(path) do
+		if self.dragTool == "erase" then
+			self:addErase(step[1], step[2])
+		else
+			self:addBuild(step[1], step[2])
+		end
+	end
 	self.lastCell = { x, y }
+	self:refreshPreview()
 end
 
 function InputController:addBuild(x, y)
@@ -382,45 +430,161 @@ function InputController:addErase(x, y)
 	table.insert(self.erasePending, key)
 end
 
-function InputController:flush()
-	if #self.pending > 0 then
+function InputController:isWater(x, y)
+	if not self.map then
+		return false
+	end
+	return Maps.isWater(self.map, x, y)
+end
+
+-- Recalcule les cases d'aperçu et leur validité locale. Le serveur reste
+-- l'autorité finale, mais le joueur voit immédiatement les refus évidents.
+function InputController:refreshPreview()
+	if not self.enabled then
+		self.preview:clear()
+		return
+	end
+
+	if self.dragging and self.dragTool == "build" then
+		local cells = {}
+		local budgetLeft = self.budget
+		local bridgesLeft = self.bridgesLeft
+		for _, cell in ipairs(self.pending) do
+			local x, y = cell[1], cell[2]
+			local key = Grid.key(x, y)
+			local valid = Grid.inBounds(x, y)
+				and not self.roads[key]
+				and not self.buildingSet[key]
+			if valid and self:isWater(x, y) then
+				if bridgesLeft > 0 then
+					bridgesLeft -= 1
+				else
+					valid = false
+				end
+			end
+			if valid then
+				if budgetLeft > 0 then
+					budgetLeft -= 1
+				else
+					valid = false
+				end
+			end
+			cells[#cells + 1] = { x = x, y = y, valid = valid }
+		end
+		self.preview:setCells(cells)
+		return
+	end
+
+	if self.dragging and self.dragTool == "erase" then
+		local cells = {}
+		for _, key in ipairs(self.erasePending) do
+			local x, y = Grid.parse(key)
+			if x then
+				cells[#cells + 1] = { x = x, y = y, valid = self.roads[key] == true }
+			end
+		end
+		self.preview:setCells(cells)
+		return
+	end
+
+	if self.dragging and self.dragTool == "camera" then
+		self.preview:clear()
+		return
+	end
+
+	if self.tool ~= "build" and self.tool ~= "erase" then
+		self.preview:clear()
+		return
+	end
+
+	local cell = self.pointer and self:cellAt(self.pointer) or nil
+	if not cell then
+		self.preview:clear()
+		return
+	end
+
+	local x, y = cell[1], cell[2]
+	local key = Grid.key(x, y)
+	local valid
+	if self.tool == "erase" then
+		valid = self.roads[key] == true
+	else
+		valid = Grid.inBounds(x, y)
+			and not self.roads[key]
+			and not self.buildingSet[key]
+		if valid and self:isWater(x, y) then
+			valid = self.bridgesLeft > 0
+		end
+		if valid then
+			valid = self.budget > 0
+		end
+	end
+	self.preview:setCells({ { x = x, y = y, valid = valid, hover = true } })
+end
+
+function InputController:commit()
+	if self.dragTool == "build" then
 		local batch = self.pending
 		self.pending = {}
 		self.pendingSet = {}
-		if self.callbacks.onDraw then
-			self.callbacks.onDraw(batch)
+		if #batch > 0 and self.callbacks.onDraw then
+			local maxCells = RoadConfig.Input.MaxCellsPerRequest
+			for index = 1, #batch, maxCells do
+				local chunk = {}
+				local last = math.min(index + maxCells - 1, #batch)
+				for i = index, last do
+					chunk[#chunk + 1] = batch[i]
+				end
+				self.callbacks.onDraw(chunk)
+			end
 		end
-	end
-
-	if #self.erasePending > 0 then
+	elseif self.dragTool == "erase" then
 		local batch = self.erasePending
 		self.erasePending = {}
 		self.eraseSet = {}
-		if self.callbacks.onErase then
-			for _, key in ipairs(batch) do
-				self.callbacks.onErase(key)
+		if #batch > 0 then
+			if self.callbacks.onEraseMany then
+				self.callbacks.onEraseMany(batch)
+			elseif self.callbacks.onErase then
+				for _, key in ipairs(batch) do
+					self.callbacks.onErase(key)
+				end
 			end
 		end
 	end
 end
 
-function InputController:endDrag()
-	self:flush()
+function InputController:resetDrag()
 	self.dragging = false
 	self.dragTool = nil
+	self.dragStart = nil
+	self.dragAxis = nil
+	self.dragScreenDX = 0
+	self.dragScreenDY = 0
 	self.lastCell = nil
-	self.diagonalIntent = false
+end
+
+function InputController:cancelDrag()
+	self.pending = {}
+	self.pendingSet = {}
+	self.erasePending = {}
+	self.eraseSet = {}
+	self:resetDrag()
+	if self.preview then
+		self.preview:clear()
+	end
+end
+
+function InputController:endDrag()
+	if self.dragging and (self.dragTool == "build" or self.dragTool == "erase") then
+		self:commit()
+	end
+	self:resetDrag()
+	self:refreshPreview()
 end
 
 function InputController:updateGhost()
-	if not self.enabled then
-		self.ghost.Transparency = 1
-		return
-	end
-
-	-- En mode construction, on cache complètement le gros carré de visée :
-	-- la route qui apparaît sous le curseur suffit, comme dans la vidéo.
-	if self.tool == "build" then
+	if not self.enabled or self.tool ~= "roundabout" then
 		self.ghost.Transparency = 1
 		return
 	end
@@ -431,9 +595,9 @@ function InputController:updateGhost()
 		return
 	end
 
-	self.ghost.CFrame = CFrame.new(Grid.center(self.origin, cell[1], cell[2], 0.44))
-	self.ghost.Color = self.tool == "erase" and Config.Colors.Danger or Config.Colors.Teal
-	self.ghost.Transparency = 0.5
+	self.ghost.CFrame = CFrame.new(Grid.center(self.origin, cell[1], cell[2], 0.52))
+	self.ghost.Color = Config.Colors.Teal
+	self.ghost.Transparency = 0.45
 end
 
 return InputController

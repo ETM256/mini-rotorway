@@ -154,6 +154,43 @@ function HUD:iconRoad(parent)
 	return holder
 end
 
+function HUD:iconPan(parent)
+	local holder = Theme.new("Frame", {
+		Parent = parent,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+	})
+	Theme.new("Frame", {
+		Parent = holder,
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(20, 4),
+		BackgroundColor3 = Theme.White,
+		BorderSizePixel = 0,
+	})
+	Theme.new("Frame", {
+		Parent = holder,
+		Position = UDim2.fromScale(0.5, 0.5),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(4, 20),
+		BackgroundColor3 = Theme.White,
+		BorderSizePixel = 0,
+	})
+	for _, offset in ipairs({
+		{ 0.5, 0.20, 8, 8 },
+		{ 0.5, 0.80, 8, 8 },
+		{ 0.20, 0.5, 8, 8 },
+		{ 0.80, 0.5, 8, 8 },
+	}) do
+		Theme.circle(holder, offset[3], Theme.White, {
+			Position = UDim2.fromScale(offset[1], offset[2]),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+		})
+	end
+	return holder
+end
+
 function HUD:iconBridge(parent)
 	local holder = Theme.new("Frame", {
 		Parent = parent,
@@ -567,6 +604,35 @@ function HUD:build()
 		ZIndex = 45,
 	})
 
+	-- Compteur de routes réellement posées. Il complète le budget restant.
+	local builtChip = Theme.new("Frame", {
+		Parent = resources,
+		Size = UDim2.fromOffset(72, 52),
+		BackgroundColor3 = Theme.PanelSoft,
+		BorderSizePixel = 0,
+		LayoutOrder = 4,
+		ZIndex = 43,
+	})
+	Theme.corner(builtChip, 10)
+	Theme.label(builtChip, "POSÉES", {
+		Position = UDim2.fromOffset(6, 8),
+		Size = UDim2.fromOffset(60, 12),
+		TextSize = 9,
+		Font = Theme.FontBold,
+		TextColor3 = Theme.InkSoft,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 44,
+	})
+	self.builtValue = Theme.label(builtChip, "0", {
+		Position = UDim2.fromOffset(6, 21),
+		Size = UDim2.fromOffset(60, 24),
+		TextSize = 18,
+		Font = Theme.FontBlack,
+		TextColor3 = Theme.Ink,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 44,
+	})
+
 	-- Toast.
 	self.toastLabel = Theme.label(gui, "", {
 		Position = UDim2.fromScale(0.5, 0.12),
@@ -586,7 +652,7 @@ function HUD:build()
 	-- Aide en bas.
 	self.hint = Theme.label(
 		gui,
-		"Glissez pour tracer  ·  clic droit pour effacer  ·  molette pour zoomer  ·  clic milieu pour déplacer",
+		"Glissez pour tracer  ·  Échap pour annuler  ·  clic droit pour effacer  ·  molette pour zoomer  ·  clic milieu pour déplacer",
 		{
 			Position = UDim2.fromScale(0.5, 0.895),
 			AnchorPoint = Vector2.new(0.5, 1),
@@ -604,7 +670,7 @@ function HUD:build()
 		Parent = gui,
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.fromScale(0.982, 0.53),
-		Size = UDim2.fromOffset(58, 132),
+		Size = UDim2.fromOffset(58, 238),
 		BackgroundColor3 = Theme.PanelDark,
 		BorderSizePixel = 0,
 		ZIndex = 46,
@@ -663,6 +729,9 @@ function HUD:build()
 	end)
 	self.toolButtons.roundabout = makeToolButton("roundabout", 3, function(button)
 		self:iconRoundabout(button)
+	end)
+	self.toolButtons.camera = makeToolButton("camera", 4, function(button)
+		self:iconPan(button)
 	end)
 	self.toolButtons.roundabout.Visible = false
 	self:setTool("build")
@@ -997,7 +1066,7 @@ function HUD:applyResponsive()
 	self.hint.Visible = not short
 
 	self.toolPill.Position = UDim2.fromScale(0.982, portrait and 0.58 or 0.53)
-	self.toolPill.Size = UDim2.fromOffset(portrait and 52 or 58, self.roundabouts > 0 and 190 or 132)
+	self.toolPill.Size = UDim2.fromOffset(portrait and 52 or 58, self.roundabouts > 0 and 290 or 238)
 
 	self.circulation.Position = UDim2.fromScale(0.022, portrait and 0.075 or 0.082)
 	self.circulation.Size = UDim2.fromOffset(portrait and 150 or 176, 38)
@@ -1034,7 +1103,7 @@ function HUD:setRoundabouts(value)
 	self.toolButtons.roundabout.Visible = self.roundabouts > 0
 	self.toolPill.Size = UDim2.fromOffset(
 		self.gui.AbsoluteSize.X < 760 and 52 or 58,
-		self.roundabouts > 0 and 190 or 132
+		self.roundabouts > 0 and 290 or 238
 	)
 	if self.tool == "roundabout" and self.roundabouts <= 0 then
 		self:setTool("build")
@@ -1070,6 +1139,7 @@ function HUD:showGame(data, map)
 	self.budgetValue.Text = "—"
 	self.bridgeValue.Text = "—"
 	self.roundaboutValue.Text = "0"
+	self.builtValue.Text = "0"
 	self.mapName = map and map.name or tostring(data.mapId)
 	self:setTool("build")
 	self:setSatisfaction(100)
@@ -1116,6 +1186,7 @@ function HUD:setState(state)
 	self.dayLabel.Text = DAYS[(((state.week or 1) - 1) % #DAYS) + 1]
 	self.budgetValue.Text = tostring(state.budget or 0)
 	self.bridgeValue.Text = tostring(state.bridges or 0)
+	self.builtValue.Text = tostring(state.roadsBuilt or 0)
 	self:setRoundabouts(state.roundabouts or 0)
 	local progress = clamp01(state.weekProgress or 0)
 	self.clockMinutePivot.Rotation = progress * 360
