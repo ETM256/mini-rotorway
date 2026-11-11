@@ -215,7 +215,8 @@ La checklist de test manuelle détaillée est dans [`docs/PLAN.md`](./docs/PLAN.
 Le système de routes prolonge la grille existante sans la remplacer :
 
 - **Tracé orthogonal** : un geste en biais est converti en chemin horizontal puis vertical (ou l'inverse). Les diagonales restent disponibles avec `RoadConfig.AllowDiagonals = true` pour les anciens réseaux.
-- **Aperçu local** : les cases sont affichées en menthe si elles sont constructibles, en corail si elles sont refusées (bâtiment, route existante, eau sans pont, budget épuisé). Rien n'est envoyé au serveur avant le relâchement.
+- **Aperçu local** : l'aperçu reprend la forme réelle de la route (même largeur, coins arrondis, bouts arrondis, calculés par `RoadGeometry`). Menthe si la case est constructible, corail si elle est refusée (bâtiment, route existante, eau sans pont, budget épuisé). Rien n'est envoyé au serveur avant le relâchement.
+- **Rendu unique** : `RoadGeometry` (module pur, testé) décrit la surface de chaque case ; `RoadRenderer` en fait des parts (liseré, surface, pont). Largeur identique partout, virages et bouts arrondis, T et croix en une seule surface, raccords qui s'arrêtent au bord des bâtiments. Seules la case modifiée et ses quatre voisines sont redessinées. Détail : `docs/road-rendering.md`.
 - **Validation autoritaire** : le serveur revérifie chaque case, consomme le budget et les ponts, puis renvoie l'état réel du réseau (`RoadState`) au client.
 - **Annulation** : `Échap` vide l'aperçu et annule tout le tracé en cours, sans consommer de route.
 - **Suppression** : clic droit + glisser ou outil « Effacer ». Les routes sont remboursées, les connexions et les trajets sont recalculés.
@@ -232,7 +233,9 @@ Le système de routes prolonge la grille existante sans la remplacer :
 | `src/ReplicatedStorage/MiniMotorways/Pathfinding.luau` | A* orthogonal par défaut, 8 directions en option historique. |
 | `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/RoadPreview.luau` | Aperçu local des cases valides / invalides. |
 | `src/StarterPlayer/StarterPlayerScripts/MiniMotorways/InputController.luau` | Construction, annulation, effacement, caméra et raycast. |
-| `Session.luau` | Graphe, rubans, connexions bâtiments, intersections, voitures et état réseau. |
+| `src/ReplicatedStorage/MiniMotorways/RoadGeometry.luau` | Géométrie pure d'une case de route (pièces, raccords, classification). |
+| `src/ServerScriptService/MiniMotorways/RoadRenderer.luau`, `SessionRoadVisuals.luau` | Rendu unique des routes et des ronds-points, mise à jour incrémentale. |
+| `src/ServerScriptService/MiniMotorways/SessionRoads.luau` | Validation, budget, remboursements, ponts, ronds-points, effacement. |
 
 ### Réglages principaux des routes
 
@@ -240,6 +243,8 @@ Le système de routes prolonge la grille existante sans la remplacer :
 | --- | --- | --- |
 | `RoadConfig.AllowDiagonals` | `false` | Réseau orthogonal ; passer à `true` pour les diagonales historiques. |
 | `RoadConfig.BuildingConnection` | `"orthogonal"` | Une route doit toucher un côté du bâtiment. |
+| `Config.Dimensions.Road.Width` | 0,54 case | Largeur unique de toutes les routes. |
+| `RoadConfig.Layers` | hauteurs / épaisseurs | Empilement liseré, surface, pont, rond-point. |
 | `RoadConfig.Visual.PreviewValidColor` | menthe | Couleur des cases constructibles. |
 | `RoadConfig.Visual.PreviewInvalidColor` | corail | Couleur des cases refusées. |
 | `RoadConfig.Input.MaxCellsPerRequest` | 512 | Taille maximale d'un lot de construction. |
@@ -271,7 +276,7 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - [x] 6 cartes avec aperçus circulaires et records locaux
 - [x] Tracé orthogonal à la souris et au doigt, virages arrondis, intersections T et croix
 - [x] Aperçu local des cases valides / invalides et annulation par `Échap`
-- [x] Ruban noir lissé au-dessus des cases, avec connexions automatiques aux bâtiments
+- [x] Routes anthracite de largeur uniforme, virages et bouts arrondis, intersections homogènes, raccords aux bâtiments (un seul renderer)
 - [x] Ponts pour traverser l'eau
 - [x] Ronds-points posables sur le réseau
 - [x] Serveur autoritaire : validation des routes, budget et état de la partie
@@ -475,30 +480,43 @@ mini-rotorway/
 ├─ default.project.json          ← mapping Rojo
 ├─ README.md
 ├─ docs/
-│  └─ PLAN.md                    ← checklist de développement et de test
+│  ├─ PLAN.md                    ← checklist de développement et de test
+│  └─ road-rendering.md          ← rendu des routes (RoadGeometry + RoadRenderer)
 ├─ tools/
 │  ├─ build.ps1                  ← télécharge Rojo si besoin et construit le .rbxlx
-│  └─ fix-source-tags.js         ← convertit les sources pour Studio
+│  ├─ build-rbxlx.js             ← reconstruit le .rbxlx depuis src/ sans Rojo
+│  ├─ fix-source-tags.js         ← convertit les sources pour Studio
+│  ├─ gen-roblox-api.js          ← génère les données d'API Roblox des tests
+│  └─ check-roblox-api.js        ← valide Enum.X.Y et Instance.new("X") dans src/
+├─ tests/                        ← harnais Luau headless + tests (voir tests/README.md)
 └─ src/
    ├─ ReplicatedStorage/MiniMotorways/
    │  ├─ Config.luau             ← réglages (grille, budget, semaines, couleurs)
    │  ├─ StoreConfig.luau        ← tous les réglages des magasins et demandes
-   │  ├─ RoadConfig.luau         ← réglages des routes, aperçu, trafic, infrastructures
+   │  ├─ RoadConfig.luau         ← réglages des routes : rendu, couches, aperçu, trafic
    │  ├─ Maps.luau               ← les 6 cartes + géographie/eau + aperçus
    │  ├─ Grid.luau               ← conversions case ↔ position 3D
    │  ├─ RoadNetwork.luau        ← voisinage, intersections, chemins H/V
+   │  ├─ RoadGeometry.luau       ← surface d'une case de route (pur, testé)
    │  ├─ Pathfinding.luau        ← A* orthogonal (8 directions en option)
    │  └─ Remotes.luau            ← RemoteEvents partagés
    ├─ ServerScriptService/MiniMotorways/
    │  ├─ Bootstrap.server.luau   ← point d'entrée serveur
-   │  ├─ Session.luau            ← simulation d'une ville
+   │  ├─ Session.luau            ← simulation d'une ville (état, horloge, score)
+   │  ├─ SessionBuildings.luau   ← placement et modèles des bâtiments, connexions
+   │  ├─ SessionRoads.luau       ← validation et budget des routes, ronds-points
+   │  ├─ SessionRoadVisuals.luau ← mise à jour incrémentale du rendu des routes
+   │  ├─ RoadRenderer.luau       ← pièces de RoadGeometry → parts Roblox
+   │  ├─ SessionTraffic.luau     ← voitures, trajets, réservations d'intersection
+   │  ├─ SessionProgress.luau    ← satisfaction, choix hebdomadaires, récompenses
+   │  ├─ SessionUtil.luau        ← helpers partagés (parts, cartes arrondies, animations)
    │  ├─ StoreSystem.luau        ← magasins, demandes, surcharge, évolution
    │  ├─ WorldBuilder.luau       ← sol, eau, grille, dossiers 3D
    │  └─ Profile.luau            ← DataStore / records
    └─ StarterPlayer/StarterPlayerScripts/MiniMotorways/
       ├─ Main.client.luau        ← câblage client
       ├─ CameraController.luau   ← caméra responsive au-dessus de la ville
-      ├─ RoadPreview.luau        ← aperçu local des cases de route
+      ├─ RoadPreview.luau        ← aperçu à la forme de la route
       ├─ InputController.luau    ← dessin, annulation, gomme et caméra
       ├─ StoreVisualController.luau ← pins et alertes des magasins
       └─ UI/
@@ -514,7 +532,7 @@ mini-rotorway/
 - Le **client ne fait que demander** : il envoie des lots de cases à dessiner, à effacer ou un rond-point à poser, et affiche l'état renvoyé par le serveur.
 - Chaque joueur possède sa propre ville, placée très loin des autres dans `Workspace.MMWorlds`.
 - Le pathfinding est un **A\*** sur la grille 18 × 18 (cases de 4 studs). Par défaut il est **orthogonal** (heuristique de Manhattan) ; `RoadConfig.AllowDiagonals` réactive les 8 directions historiques.
-- Le **ruban de route** de `Session.luau` est une spline de Catmull-Rom qui passe par les centres des cases. Il est purement visuel : la simulation, les voitures et le budget restent sur la grille.
+- Les **routes** sont rendues par un seul renderer : `RoadGeometry` (pur) décrit les pièces de chaque case, `RoadRenderer` les instancie. C'est purement visuel : la simulation, les voitures et le budget restent sur la grille.
 - La construction est **locale jusqu'au relâchement** : `InputController` affiche les cases valides / invalides, puis envoie le lot au serveur. `Échap` annule sans consommer de ressources.
 - Le choix hebdomadaire est un `RemoteEvent` serveur → client ; le serveur reste en pause tant qu'aucune des deux options n'a été validée.
 - Les voitures partent de la maison, suivent le chemin, livrent la destination, puis reviennent. Si une route est supprimée, leur chemin est recalculé.
@@ -533,6 +551,23 @@ powershell -ExecutionPolicy Bypass -File tools/build.ps1
 ```
 
 Le script télécharge Rojo 7.7.1 dans `%TEMP%\mini-motorways-rbx-tools` s'il n'est pas déjà présent, construit `MiniMotorwaysRBX.rbxlx`, puis convertit les balises `Source` pour Roblox Studio. Node.js est utilisé pour cette dernière étape.
+
+### Rebuild sans Rojo (macOS / Linux / Windows avec Node)
+
+```bash
+node tools/build-rbxlx.js
+```
+
+Régénère `MiniMotorwaysRBX.rbxlx` depuis `src/` (mêmes balises `ProtectedString` que le build Rojo) en conservant l'éclairage et les services statiques du fichier existant.
+
+### Tests
+
+```bash
+bash tests/run.sh          # n'affiche que les échecs et la ligne finale « TESTS: N passed, ... »
+node tools/check-roblox-api.js
+```
+
+Le harnais exécute le vrai code de `src/` dans le CLI `luau` (`brew install luau`) avec un Roblox simulé strict : une propriété, une méthode ou une énumération invalide fait échouer le test. Voir `tests/README.md`. Les tests ne remplacent pas un essai dans Studio : ils ne voient ni le rendu, ni la mise en page réelle de l'interface, ni les entrées réelles.
 
 ### Rojo serve + plugin
 
@@ -588,7 +623,7 @@ Les magasins ont leur propre fichier, `src/ReplicatedStorage/MiniMotorways/Store
 
 Les cartes sont dans `Maps.luau` : nom, description, couleurs, fonction `isWater` et petit tracé `previewRoads` pour l'aperçu du menu.
 
-Le ruban lissé se règle dans `RoadConfig.Visual` (`RibbonEdgeWidth`, `RibbonTopWidth`, `CornerRadius`) et dans `Session.luau` pour la finesse des échantillons (`samplesPerSegment`). Les couleurs restent celles du jeu : `Config.Colors.Road`, `RoadEdge`, `Bridge` et `BridgeEdge`.
+Les routes se règlent dans `Config.Dimensions.Road`, `RoadConfig.Visual` (`CornerRadius`) et `RoadConfig.Layers` (hauteurs). Les couleurs restent celles du jeu : `Config.Colors.Road`, `RoadEdge`, `Bridge` et `BridgeEdge`. Le détail du rendu est dans `docs/road-rendering.md`.
 
 ---
 
@@ -601,12 +636,12 @@ Le ruban lissé se règle dans `RoadConfig.Visual` (`RibbonEdgeWidth`, `RibbonTo
 
 ### Limites connues
 
-- Le ruban lissé est **visuel** : les voitures suivent toujours les centres des cases de la grille. La courbe peut donc légèrement dépasser le centre du trajet, mais elle reste dans la largeur de la route.
+- Le coin intérieur des virages reste vif : seul le coin extérieur est arrondi (la surface est une union de rectangles et de disques).
 - Les voitures utilisent un évitement simple et une réservation d'intersection : les embouteillages en boucle fermée restent possibles. C'est volontaire pour le prototype, mais des feux/priorités avancés seraient la prochaine amélioration.
 - Le zoom et le déplacement de caméra sont disponibles à la souris (molette, clic milieu, outil Caméra) ; les gestes tactiles à deux doigts ne sont pas encore gérés.
 - Les records sont locaux au serveur/DataStore ; il n'y a pas encore de classement global.
 - Le nom et l'identité visuelle doivent être remplacés avant une publication publique.
-- Il n'y a pas de test automatisé du runtime Roblox dans ce dépôt.
+- Les tests automatiques (`bash tests/run.sh`) utilisent un Roblox simulé : ils ne remplacent pas un essai dans Studio.
 - Les magasins sont limités à **8 couleurs uniques** par défaut. Au-delà de 8, `StoreSystem` réutilise une couleur et les maisons choisissent le magasin de même couleur le plus proche.
 - Les pins sont affichés côté client à partir de `StoreState`. Le serveur renvoie un snapshot toutes les **1,5 s** même sans changement, ce qui sert de resynchronisation si un message est manqué.
 - Le rythme et l'équilibrage des magasins (intervalles, surcharge, évolution) sont des valeurs de départ à valider en jouant.
