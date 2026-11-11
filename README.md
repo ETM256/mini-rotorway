@@ -478,7 +478,11 @@ mini-rotorway/
 │  └─ PLAN.md                    ← checklist de développement et de test
 ├─ tools/
 │  ├─ build.ps1                  ← télécharge Rojo si besoin et construit le .rbxlx
-│  └─ fix-source-tags.js         ← convertit les sources pour Studio
+│  ├─ build-rbxlx.js             ← reconstruit le .rbxlx depuis src/ sans Rojo
+│  ├─ fix-source-tags.js         ← convertit les sources pour Studio
+│  ├─ gen-roblox-api.js          ← génère les données d'API Roblox des tests
+│  └─ check-roblox-api.js        ← valide Enum.X.Y et Instance.new("X") dans src/
+├─ tests/                        ← harnais Luau headless + tests (voir tests/README.md)
 └─ src/
    ├─ ReplicatedStorage/MiniMotorways/
    │  ├─ Config.luau             ← réglages (grille, budget, semaines, couleurs)
@@ -491,7 +495,14 @@ mini-rotorway/
    │  └─ Remotes.luau            ← RemoteEvents partagés
    ├─ ServerScriptService/MiniMotorways/
    │  ├─ Bootstrap.server.luau   ← point d'entrée serveur
-   │  ├─ Session.luau            ← simulation d'une ville
+   │  ├─ Session.luau            ← simulation d'une ville (état, horloge, score)
+   │  ├─ SessionBuildings.luau   ← placement et modèles des bâtiments, connexions
+   │  ├─ SessionRoads.luau       ← validation et budget des routes, ronds-points
+   │  ├─ SessionRoadVisuals.luau ← rendu des routes
+   │  ├─ SessionRibbons.luau     ← ruban de route lissé
+   │  ├─ SessionTraffic.luau     ← voitures, trajets, réservations d'intersection
+   │  ├─ SessionProgress.luau    ← satisfaction, choix hebdomadaires, récompenses
+   │  ├─ SessionUtil.luau        ← helpers partagés (parts, cartes arrondies, animations)
    │  ├─ StoreSystem.luau        ← magasins, demandes, surcharge, évolution
    │  ├─ WorldBuilder.luau       ← sol, eau, grille, dossiers 3D
    │  └─ Profile.luau            ← DataStore / records
@@ -533,6 +544,23 @@ powershell -ExecutionPolicy Bypass -File tools/build.ps1
 ```
 
 Le script télécharge Rojo 7.7.1 dans `%TEMP%\mini-motorways-rbx-tools` s'il n'est pas déjà présent, construit `MiniMotorwaysRBX.rbxlx`, puis convertit les balises `Source` pour Roblox Studio. Node.js est utilisé pour cette dernière étape.
+
+### Rebuild sans Rojo (macOS / Linux / Windows avec Node)
+
+```bash
+node tools/build-rbxlx.js
+```
+
+Régénère `MiniMotorwaysRBX.rbxlx` depuis `src/` (mêmes balises `ProtectedString` que le build Rojo) en conservant l'éclairage et les services statiques du fichier existant.
+
+### Tests
+
+```bash
+bash tests/run.sh          # n'affiche que les échecs et la ligne finale « TESTS: N passed, ... »
+node tools/check-roblox-api.js
+```
+
+Le harnais exécute le vrai code de `src/` dans le CLI `luau` (`brew install luau`) avec un Roblox simulé strict : une propriété, une méthode ou une énumération invalide fait échouer le test. Voir `tests/README.md`. Les tests ne remplacent pas un essai dans Studio : ils ne voient ni le rendu, ni la mise en page réelle de l'interface, ni les entrées réelles.
 
 ### Rojo serve + plugin
 
@@ -606,7 +634,7 @@ Le ruban lissé se règle dans `RoadConfig.Visual` (`RibbonEdgeWidth`, `RibbonTo
 - Le zoom et le déplacement de caméra sont disponibles à la souris (molette, clic milieu, outil Caméra) ; les gestes tactiles à deux doigts ne sont pas encore gérés.
 - Les records sont locaux au serveur/DataStore ; il n'y a pas encore de classement global.
 - Le nom et l'identité visuelle doivent être remplacés avant une publication publique.
-- Il n'y a pas de test automatisé du runtime Roblox dans ce dépôt.
+- Les tests automatiques (`bash tests/run.sh`) utilisent un Roblox simulé : ils ne remplacent pas un essai dans Studio.
 - Les magasins sont limités à **8 couleurs uniques** par défaut. Au-delà de 8, `StoreSystem` réutilise une couleur et les maisons choisissent le magasin de même couleur le plus proche.
 - Les pins sont affichés côté client à partir de `StoreState`. Le serveur renvoie un snapshot toutes les **1,5 s** même sans changement, ce qui sert de resynchronisation si un message est manqué.
 - Le rythme et l'équilibrage des magasins (intervalles, surcharge, évolution) sont des valeurs de départ à valider en jouant.

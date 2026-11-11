@@ -1,0 +1,6 @@
+# Régénérés par `bash tests/run.sh` à chaque exécution (sources embarquées) :
+# ne jamais les éditer ni les versionner.
+harness/_modules.generated.luau
+_tests.generated.luau
+.gen.*
+harness/.gen.*
