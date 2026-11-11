@@ -447,7 +447,7 @@ return function(T, H)
 	-- Every StartGame bumps Bootstrap's worldCounter, so the city origin moves
 	-- 700 studs further on each restart (2800 after four): precision loss and
 	-- unbounded world growth after many restarts.
-	T.todo("restarting reuses the player's world slot (origin stays bounded) (needs the Bootstrap slot recycling: core PR)", function()
+	T.test("restarting reuses the player's world slot (origin stays bounded)", function()
 		H.runScript("Bootstrap")
 		H.asClient()
 		H.runScript("Main")
