@@ -27,7 +27,6 @@ Session.__index = Session
 require(script.Parent.SessionBuildings)(Session)
 require(script.Parent.SessionRoads)(Session)
 require(script.Parent.SessionRoadVisuals)(Session)
-require(script.Parent.SessionRibbons)(Session)
 require(script.Parent.SessionTraffic)(Session)
 require(script.Parent.SessionProgress)(Session)
 
@@ -45,12 +44,15 @@ function Session.new(player, mapId, worldIndex)
 
 	self.roads = {}
 	self.bridges = {}
+	-- Rendu des routes (SessionRoadVisuals) : parts, signatures de forme, cases à
+	-- redessiner, cases en cours d'apparition, bâtiments déjà pris en compte.
 	self.roadParts = {}
-	self.roadRibbons = {}
-	self.roadRibbonPaths = {}
-	self.ribbonEdges = {}
-	self.lastRibbonCell = nil
-	self.roadRibbonsDirty = false
+	self.roadSignatures = {}
+	self.roadDirty = {}
+	self.roadReveal = {}
+	self.roadBuildingsSeen = 0
+	-- Tweens de la partie (clé = tween), arrêtés à la destruction de la partie.
+	self.tweens = {}
 	self.roundaboutParts = {}
 	self.intersections = {}
 	self.intersectionReservations = {}
@@ -96,12 +98,9 @@ function Session:setSpeed(value)
 end
 
 function Session:update(dt)
-	-- Même en pause, on peut effacer des routes : le ruban visuel doit se
+	-- Même en pause, on peut effacer des routes : le rendu des routes doit se
 	-- mettre à jour sans attendre la reprise de la simulation.
-	if self.roadRibbonsDirty then
-		self.roadRibbonsDirty = false
-		self:rebuildRoadRibbons()
-	end
+	self:flushRoadRender()
 
 	if not self.running or self.paused or self.over or self.awaitingChoice then
 		return
@@ -271,6 +270,7 @@ function Session:destroy()
 		self.storeSystem:destroy()
 		self.storeSystem = nil
 	end
+	SessionUtil.cancelTweens(self.tweens)
 	if self.world and self.world.folder then
 		self.world.folder:Destroy()
 	end
@@ -283,10 +283,10 @@ function Session:destroy()
 	self.roundaboutParts = {}
 	self.intersections = {}
 	self.intersectionReservations = {}
-	self.roadRibbons = {}
-	self.roadRibbonPaths = {}
-	self.ribbonEdges = {}
-	self.lastRibbonCell = nil
+	self.roadParts = {}
+	self.roadSignatures = {}
+	self.roadDirty = {}
+	self.roadReveal = {}
 	self.choice = nil
 end
 

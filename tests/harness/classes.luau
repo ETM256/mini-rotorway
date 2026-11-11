@@ -26,6 +26,7 @@ function W.reset()
 	W.mouse = Vector2.new(0, 0)
 	W.keysDown = {}
 	W.buttonsDown = {}
+	W.fingers = {}
 	W.remoteLog = {}
 	W.coreGui = {}
 	W.core = {}

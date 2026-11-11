@@ -196,13 +196,11 @@ return function(T, H)
 
 	T.test("RoadConfig: widths are fractions of a tile, ordered inside to outside", function()
 		local V = H.load("RoadConfig").Visual
-		for _, key in ipairs({ "RoadWidth", "ContourWidth", "EdgeWidth", "RibbonEdgeWidth", "RibbonTopWidth" }) do
+		for _, key in ipairs({ "RoadWidth", "EdgeWidth" }) do
 			T.gt(V[key], 0, key)
 			T.le(V[key], 1, key)
 		end
-		T.le(V.RoadWidth, V.ContourWidth)
-		T.le(V.ContourWidth, V.EdgeWidth)
-		T.le(V.RibbonTopWidth, V.RibbonEdgeWidth)
+		T.le(V.RoadWidth, V.EdgeWidth)
 		T.ge(V.PreviewTransparency, 0)
 		T.le(V.PreviewTransparency, 1)
 	end)

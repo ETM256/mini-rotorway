@@ -19,9 +19,9 @@ return function(T, H)
 	T.test("creating a session is quick on every map", function()
 		for _, map in ipairs(H.load("Maps").all()) do
 			H.reset()
-			local started = os.clock()
+			local started = H.cpuClock()
 			H.newSession(map.id)
-			T.lt(os.clock() - started, 2, map.id .. " takes too long to build")
+			T.lt(H.cpuClock() - started, 2, map.id .. " takes too long to build")
 		end
 	end)
 
@@ -31,9 +31,9 @@ return function(T, H)
 		for _, house in ipairs(session.houses) do
 			H.connect(session, house, session.destinations[1])
 		end
-		local started = os.clock()
+		local started = H.cpuClock()
 		H.runSession(session, 300, 0.1)
-		T.lt(os.clock() - started, 3)
+		T.lt(H.cpuClock() - started, 3)
 	end)
 
 	T.test("memory stays bounded: part count does not grow while nothing changes", function()

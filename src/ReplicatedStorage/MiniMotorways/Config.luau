@@ -20,6 +20,15 @@ Config.Grid = {
 	TileSize = 4,
 }
 
+-- Dimensions partagées : une seule source pour les tailles visibles. Les
+-- routes sont plus étroites qu'un bâtiment et qu'une case, sans trou ni
+-- chevauchement entre le liseré et la surface.
+Config.Dimensions = {
+	-- Route : coeur anthracite, liseré blanc fin (Contour puis Edge), en fraction
+	-- d'une case.
+	Road = { Width = 0.54, Contour = 0.57, Edge = 0.59 },
+}
+
 -- Every player gets their own city, far away from the others.
 Config.World = {
 	OriginSpacing = 700,

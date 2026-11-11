@@ -76,6 +76,15 @@ end
 baseEnv.time = function()
 	return Scheduler.now
 end
+-- os.clock est virtualisé (horloge du harnais) : les anti-double-clic de Theme
+-- et Lobby deviennent déterministes, sans attente réelle. Le temps CPU réel
+-- reste disponible par H.cpuClock (tests de performance).
+H.cpuClock = os.clock
+baseEnv.os = setmetatable({
+	clock = function()
+		return 1000 + Scheduler.now
+	end,
+}, { __index = os })
 baseEnv.elapsedTime = baseEnv.time
 baseEnv.warn = function(...)
 	table.insert(H.warnings, joinArgs(...))
@@ -497,6 +506,39 @@ function H.input.key(keyCodeName, down)
 	local state = down and D.Enum.UserInputState.Begin or D.Enum.UserInputState.End
 	local signal = down and "InputBegan" or "InputEnded"
 	I.fire(I.getSignal(uis(), signal), newInput(D.Enum.UserInputType.Keyboard, state, nil, keyCode), false)
+end
+
+-- Écran tactile : un même objet d'entrée par doigt, du début à la fin (comme
+-- Roblox ; InputController le retrouve par identité). `id` identifie le doigt.
+local function fingerDown(id)
+	local input = W.fingers[id]
+	if not input then
+		error("H.input: finger " .. tostring(id) .. " is not down", 3)
+	end
+	return input
+end
+function H.input.touchBegin(id, x, y)
+	assert(W.fingers[id] == nil, "H.input.touchBegin: finger " .. tostring(id) .. " is already down")
+	local input = newInput(D.Enum.UserInputType.Touch, D.Enum.UserInputState.Begin, D.Vector3.new(x, y, 0))
+	W.fingers[id] = input
+	I.fire(I.getSignal(uis(), "InputBegan"), input, false)
+end
+function H.input.touchMove(id, x, y)
+	local input = fingerDown(id)
+	local old = input.Position
+	input.Position = D.Vector3.new(x, y, 0)
+	input.Delta = D.Vector3.new(x - old.X, y - old.Y, 0)
+	input.UserInputState = D.Enum.UserInputState.Change
+	I.fire(I.getSignal(uis(), "InputChanged"), input, false)
+end
+function H.input.touchEnd(id, x, y)
+	local input = fingerDown(id)
+	if x then
+		input.Position = D.Vector3.new(x, y, 0)
+	end
+	input.UserInputState = D.Enum.UserInputState.End
+	W.fingers[id] = nil
+	I.fire(I.getSignal(uis(), "InputEnded"), input, false)
 end
 
 -- ---------------------------------------------------------------- remotes --
