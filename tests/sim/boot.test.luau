@@ -230,7 +230,7 @@ return function(T, H)
 	-- Brief, part 7: remove the diagonal hatched band and the small vertical
 	-- side texts around the terrain (WorldBuilder.addHatchedBorder /
 	-- addMapLabel).
-	T.todo("no hatched border and no vertical side labels around the map", function()
+	T.test("no hatched border and no vertical side labels around the map", function()
 		local session = H.newSession("los_angeles")
 		T.eq(#H.find(session.world.folder, { name = "BorderHatch" }), 0, "hatched border")
 		T.eq(#H.find(session.world.folder, { name = "MapLabelStrip" }), 0, "side label strips")
@@ -247,10 +247,10 @@ return function(T, H)
 		end
 	end)
 
-	-- Brief, part 6.5/6.6: trees must never be drawn on water. The park-centre
-	-- clusters of WorldBuilder ignore Maps.isWater (los_angeles has one tree at
-	-- cell 4:12 in the sea).
-	T.todo("no tree is drawn on water, on any map", function()
+	-- Brief, part 6.5/6.6: trees must never be drawn on water. Garde-fou : les
+	-- groupes d'arbres du centre des parcs ignorent Maps.isWater (los_angeles
+	-- avait un arbre en mer, case 4:12).
+	T.test("no tree is drawn on water, on any map", function()
 		local Maps, Grid = H.load("Maps"), H.load("Grid")
 		for _, map in ipairs(Maps.all()) do
 			H.reset()
@@ -262,9 +262,9 @@ return function(T, H)
 		end
 	end)
 
-	-- Buildings are placed without looking at the park trees: ~3.5% of the
-	-- buildings (10 of 288 over 36 runs) land on a cell that holds a tree.
-	T.todo("buildings never spawn on a cell that holds a tree", function()
+	-- Garde-fou : les bâtiments évitent les cases occupées par un arbre (avant
+	-- le correctif, ~3,5 % tombaient sur un arbre).
+	T.todo("buildings never spawn on a cell that holds a tree (needs the StoreSystem tree-cell rule: buildings PR)", function()
 		local Maps, Grid = H.load("Maps"), H.load("Grid")
 		for _, map in ipairs(Maps.all()) do
 			for seed = 1, 6 do

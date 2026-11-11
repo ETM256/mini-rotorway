@@ -67,7 +67,7 @@ return function(T, H)
 		T.le(count, 25)
 	end)
 
-	T.todo("static terrain uses at most 300 parts", function()
+	T.test("static terrain uses at most 300 parts", function()
 		local session = H.newSession("los_angeles")
 		T.le(terrainParts(session), 300)
 	end)
