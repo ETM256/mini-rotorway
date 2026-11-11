@@ -68,6 +68,12 @@ RoadConfig.Input = {
 	MaxCellsPerRequest = 512,
 	-- Hystérésis : en dessous de ce seuil, on conserve le dernier axe.
 	DragAxisThreshold = 0.35,
+	-- Mouvement minimal (pixels écran) avant de décider d'un axe dominant.
+	AxisMinPixels = 4,
+	-- Rafraîchissement de l'aperçu survolé (secondes), pour suivre la caméra.
+	HoverRefresh = 0.12,
+	-- Zoom par pincement : variation de zoom pour un doublement de l'écart.
+	PinchZoomGain = 1.5,
 }
 
 -- Apparition échelonnée des cases d'un même tracé (en secondes).

@@ -139,28 +139,80 @@ return function(T, H)
 		T.eq(#problems, 0, table.concat(problems, "\n"))
 	end)
 
-	T.test("client classes: every self:method() call is defined in the same file", function()
-		local problems = {}
-		local classes = 0
-		for _, src in ipairs(sources()) do
-			if string.find(src.file, "StarterPlayer", 1, true) and src.class == "ModuleScript" then
-				local className = string.match(src.code, "local%s+([%w_]+)%s*=%s*{}%s*[\n\r]")
-				if className then
+	-- Classe client : `local X = {}` dans son fichier. Mixin : fichier qui renvoie
+	-- `function(X) ... end` et définit `function X:nom(` (HUD est découpé ainsi).
+	local function clientClassOf(code)
+		local name = string.match(code, "local%s+([%w_]+)%s*=%s*{}%s*[\n\r]")
+		if name then
+			return name, "class"
+		end
+		name = string.match(code, "return%s+function%s*%(%s*([%a_][%w_]*)%s*%)")
+		if name then
+			return name, "mixin"
+		end
+		return nil, nil
+	end
+
+	local function folderOf(file)
+		return string.match(file, "^(.*)/[^/]*$") or ""
+	end
+
+	-- Problèmes « self:nom() non défini » dans les classes et mixins client. Une
+	-- méthode peut être définie dans le fichier même ou dans un mixin frère (même
+	-- dossier, `return function(X)`) qui étend la classe X.
+	local function undefinedClientMethods(list)
+		local problems, classes = {}, 0
+		for _, src in ipairs(list) do
+			local className, kind = clientClassOf(src.code)
+			if className and string.find(src.file, "StarterPlayer", 1, true) and src.class == "ModuleScript" then
+				if kind == "class" then
 					classes += 1
-					local defs = definedMethods(src.code, className)
-					for field in string.gmatch(src.code, "self%.([%a_][%w_]*)%s*=%s*function") do
-						defs[field] = true
-					end
-					for name in string.gmatch(src.code, "self:([%a_][%w_]*)%s*%(") do
-						if not defs[name] then
-							table.insert(problems, src.file .. ": self:" .. name .. "()")
+				end
+				local defs = definedMethods(src.code, className)
+				for field in string.gmatch(src.code, "self%.([%a_][%w_]*)%s*=%s*function") do
+					defs[field] = true
+				end
+				for _, sib in ipairs(list) do
+					if sib ~= src and folderOf(sib.file) == folderOf(src.file) and clientClassOf(sib.code) == className then
+						for name in pairs(definedMethods(sib.code, className)) do
+							defs[name] = true
 						end
+					end
+				end
+				for name in string.gmatch(src.code, "self:([%a_][%w_]*)%s*%(") do
+					if not defs[name] then
+						table.insert(problems, src.file .. ": self:" .. name .. "()")
 					end
 				end
 			end
 		end
+		return problems, classes
+	end
+
+	T.test("client classes: every self:method() call is defined in the class file or a sibling mixin", function()
+		local problems, classes = undefinedClientMethods(sources())
 		T.gt(classes, 3)
 		T.eq(#problems, 0, table.concat(problems, "\n"))
+	end)
+
+	-- Garde-fou du contrôle lui-même : il doit attraper une méthode absente, et
+	-- accepter une méthode définie dans un mixin frère.
+	T.test("client classes: the checker flags a truly undefined method and accepts mixin methods", function()
+		local folder = "src/StarterPlayer/StarterPlayerScripts/MiniMotorways/UI/"
+		local problems = undefinedClientMethods({
+			{
+				file = folder .. "Fake.luau",
+				class = "ModuleScript",
+				code = "local Fake = {}\nFake.__index = Fake\nfunction Fake:run()\n\tself:helper()\n\tself:missing()\nend\nreturn Fake",
+			},
+			{
+				file = folder .. "FakeMixin.luau",
+				class = "ModuleScript",
+				code = "return function(Fake)\n\tfunction Fake:helper()\n\t\tself:run()\n\tend\nend",
+			},
+		})
+		T.eq(#problems, 1, table.concat(problems, "\n"))
+		T.ok(string.find(problems[1] or "", "self:missing()", 1, true) ~= nil, "the undefined call is reported")
 	end)
 
 	T.test("no module uses deprecated Roblox globals (wait/spawn/delay)", function()

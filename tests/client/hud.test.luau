@@ -121,22 +121,20 @@ return function(T, H)
 		T.falsy(gui.Enabled)
 	end)
 
-	T.test("setState shows score, week, budget, bridges, roundabouts and built roads", function()
+	T.test("setState shows score, week, budget, bridges, houses and destinations", function()
 		local hud, gui = newHud({})
 		hud:showGame(started(), H.load("Maps").getById("los_angeles"))
-		hud:setState(state())
+		hud:setState(state({ houses = 9, destinations = 4 }))
 		H.advance(1)
-		for _, expected in ipairs({ "12", "17", "2", "9" }) do
+		for _, expected in ipairs({ "12", "17", "2", "9", "4" }) do
 			T.ok(hasText(gui, expected), "the HUD should display " .. expected)
 		end
 		hud:setState(state({ score = 345 }))
 		T.ok(hasText(gui, "345"))
 	end)
 
-	-- Brief, part 9.1: the top bar must display the game day and the time
-	-- progression. Today only the weekday abbreviation ("MER") is visible; the
-	-- "SEMAINE n" label stays hidden.
-	T.todo("the top bar shows the current day / week number", function()
+	-- Brief, part 9.1: the top bar displays the game day, the month and the week.
+	T.test("the top bar shows the current day / week number", function()
 		local hud, gui = newHud({})
 		hud:showGame(started(), H.load("Maps").getById("los_angeles"))
 		hud:setState(state({ week = 6 }))

@@ -100,7 +100,9 @@ return function(T, H)
 		local Config = H.load("Config")
 		local origin = H.lastSent("GameStarted").origin
 		local size = Config.Grid.Size * Config.Grid.TileSize
-		T.near(camera.CFrame.Position.X, origin.X + size / 2, 1e-3)
+		-- La carte est centrée dans la zone libre (hors barres du HUD) : le centre de la
+		-- caméra s'écarte un peu de celui de la carte, d'au plus un dixième de sa largeur.
+		T.near(camera.CFrame.Position.X, origin.X + size / 2, size * 0.1)
 		T.ok(workspace:FindFirstChild("MMWorlds"))
 	end)
 
@@ -193,6 +195,8 @@ return function(T, H)
 		H.input.mouseUp(sx + 60, sy, 3)
 		H.advance(0.5)
 		T.eq(#H.sent("DrawRoad", "toServer"), 0)
+		T.eq(#H.sent("EraseRoads", "toServer"), 0, "the middle button never erases")
+		T.eq(#H.sent("EraseRoad", "toServer"), 0, "the middle button never erases")
 	end)
 
 	T.test("mouse wheel zooms within limits, in both directions", function()
@@ -221,22 +225,70 @@ return function(T, H)
 		T.gt(best, 1.5, "scrolling must be able to zoom in")
 	end)
 
-	T.test("erase tool (key 2 / right click) removes roads through the server", function()
+	-- Contrôles (InputController) : touche 2 = outil gomme, puis clic gauche. Le
+	-- clic droit gomme aussi, quel que soit l'outil (voir le test ci-dessous).
+	T.test("erase tool (key 2) removes roads through the server", function()
 		boot()
 		local x, y = freeRow()
 		local ex, ey = drag(x, y, x + 3, y)
 		H.input.mouseUp(ex, ey, 1)
 		H.advance(0.3)
 		local before = roadSet()
+		H.input.key("Two", true)
+		H.input.key("Two", false)
 		local sx, sy = screenOf(x + 1, y)
 		H.input.mouseMove(sx, sy)
-		H.input.mouseDown(sx, sy, 2)
-		H.input.mouseUp(sx, sy, 2)
+		H.input.mouseDown(sx, sy, 1)
+		H.input.mouseUp(sx, sy, 1)
 		H.advance(0.3)
 		local after = roadSet()
 		T.falsy(after[(x + 1) .. ":" .. y], "the cell under the cursor was erased")
 		T.ok(before[(x + 1) .. ":" .. y])
 		T.ok(after[x .. ":" .. y], "neighbouring cells survive a single erase")
+	end)
+
+	T.test("right-button drag erases the roads it crosses, through the server", function()
+		boot()
+		local x, y = freeRow()
+		local ex, ey = drag(x, y, x + 3, y)
+		H.input.mouseUp(ex, ey, 1)
+		H.advance(0.3)
+		local before = roadSet()
+		T.ok(before[(x + 3) .. ":" .. y], "the road was built first")
+		-- Clic droit maintenu sur les mêmes cases : tout le tracé s'efface.
+		local sx1, sy1 = screenOf(x, y)
+		local sx2, sy2 = screenOf(x + 3, y)
+		H.input.mouseMove(sx1, sy1)
+		H.input.mouseDown(sx1, sy1, 2)
+		for i = 1, 8 do
+			H.input.mouseMove(sx1 + (sx2 - sx1) * i / 8, sy1 + (sy2 - sy1) * i / 8)
+		end
+		H.input.mouseUp(sx2, sy2, 2)
+		H.advance(0.3)
+		local after = roadSet()
+		for i = 0, 3 do
+			T.falsy(after[(x + i) .. ":" .. y], "right-button drag left the road at " .. (x + i))
+		end
+		T.eq(#H.sent("DrawRoad", "toServer"), 1, "only the initial build was sent")
+		T.ge(#H.sent("EraseRoads", "toServer"), 1, "the erase reached the server")
+		T.eq(#H.handlerErrors, 0)
+	end)
+
+	T.test("a right press during a left-button stroke never replaces it", function()
+		boot()
+		local x, y = freeRow()
+		local sx1, sy1 = screenOf(x, y)
+		local sx2, sy2 = screenOf(x + 2, y)
+		H.input.mouseMove(sx1, sy1)
+		H.input.mouseDown(sx1, sy1, 1)
+		H.input.mouseMove(sx2, sy2)
+		H.input.mouseDown(sx2, sy2, 2)
+		H.input.mouseUp(sx2, sy2, 2)
+		H.input.mouseUp(sx2, sy2, 1)
+		H.advance(0.3)
+		T.eq(#H.sent("EraseRoads", "toServer"), 0, "the right button never erased during the stroke")
+		local set = roadSet()
+		T.ok(set[(x + 2) .. ":" .. y], "the left stroke still completed")
 	end)
 
 	T.test("P asks the server to pause and the clock stops", function()
@@ -395,7 +447,7 @@ return function(T, H)
 	-- Every StartGame bumps Bootstrap's worldCounter, so the city origin moves
 	-- 700 studs further on each restart (2800 after four): precision loss and
 	-- unbounded world growth after many restarts.
-	T.todo("restarting reuses the player's world slot (origin stays bounded)", function()
+	T.todo("restarting reuses the player's world slot (origin stays bounded) (needs the Bootstrap slot recycling: core PR)", function()
 		H.runScript("Bootstrap")
 		H.asClient()
 		H.runScript("Main")

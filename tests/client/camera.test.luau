@@ -87,7 +87,7 @@ return function(T, H)
 		T.ge(last, 2)
 		T.le(last, 3.5, "an upper zoom limit exists")
 		CameraController.setZoom(99)
-		T.eq(CameraController.getZoom(), CameraController.getZoom())
+		T.eq(CameraController.getZoom(), H.load("Config").Camera.ZoomMax, "the target is clamped to ZoomMax")
 		T.le(CameraController.getZoom(), 3.5)
 		H.advance(1)
 		T.ok(camera.CFrame.LookVector:FuzzyEq(look0, 0.01), "the camera keeps its orientation")
@@ -134,12 +134,33 @@ return function(T, H)
 		T.eq(CameraController.getMapSize(), 0)
 	end)
 
-	T.test("camera moves are tweened (smooth), not snapped", function()
-		local CameraController, camera = focus(1920, 1080)
-		local start = camera.CFrame.Position
-		CameraController.setZoom(2)
-		T.eq(camera.CFrame.Position, start, "the tween has not run yet")
+	-- La distance de la caméra (Position.Y, pose au-dessus de la carte) se règle
+	-- image par image vers la cible du zoom : pas d'à-coup, pas de dépassement.
+	T.test("zoom eases toward its clamped target frame by frame, without overshoot, and converges", function()
+		local CameraController, camera, Config = focus(1920, 1080)
+		local Camera = Config.Camera
+		local size = Config.Grid.Size * Config.Grid.TileSize
+		local startY = camera.CFrame.Position.Y
+		-- Au zoom 1 la distance vaut size * Fit / 2 / tan(FOV / 2) : repère indépendant du code.
+		T.near(startY, size * Camera.Fit * 0.5 / math.tan(math.rad(Camera.FOV) * 0.5), startY * 1e-3)
+
+		CameraController.setZoom(99)
+		T.eq(CameraController.getZoom(), Camera.ZoomMax, "the target is clamped to ZoomMax")
+		T.eq(camera.CFrame.Position.Y, startY, "nothing moves before a frame is rendered")
+
+		local previousY, firstY = startY, nil
+		for _ = 1, 90 do -- 3 s de frames à 30 Hz
+			H.advance(1 / 30)
+			local y = camera.CFrame.Position.Y
+			T.le(y, previousY + 1e-9, "the camera never moves away while zooming in")
+			firstY = firstY or y
+			previousY = y
+		end
+		T.lt(firstY, startY, "the first frame already moves the camera")
+		T.gt(firstY, previousY + startY * 0.01, "one frame is not the end: the move is tweened, not snapped")
+		T.near(previousY, startY / Camera.ZoomMax, startY * 1e-3, "converged to the zoom target")
+
 		H.advance(1)
-		T.ne(camera.CFrame.Position, start)
+		T.near(camera.CFrame.Position.Y, previousY, 1e-6, "stays at the target once settled")
 	end)
 end
