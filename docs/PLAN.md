@@ -349,3 +349,23 @@
 - [ ] Tester les embouteillages en boucle fermée et confirmer l'absence de blocage permanent.
 - [ ] Tester la construction et l'effacement au doigt sur mobile.
 - [ ] Décider du moment où les autoroutes dédiées seront branchées.
+
+## 11. Refonte qualité vers Mini Motorways (11/11/2026)
+
+Détail complet : `docs/REFONTE.md`. Résumé de la checklist :
+
+- [x] Analyse du projet et plan par fichier (aucune reprise à zéro)
+- [x] `Session.luau` découpé : SessionBuildings / SessionRoads / SessionRoadVisuals / SessionTraffic / SessionProgress / SessionUtil
+- [x] Terrain et cartes : eau dérivée des formes, rivières avec ponts, parcs, arbres, grille discrète ; bordure hachurée et textes latéraux supprimés
+- [x] Routes : `RoadGeometry` + `RoadRenderer` (un seul renderer), largeur unique 0,54 case, virages et bouts arrondis, T/croix homogènes, raccords aux bâtiments, aperçu à la forme réelle
+- [x] Bâtiments : maisons vues du dessus (variantes), magasins carrés/ronds, ombres douces, tailles dans `Config.Dimensions`
+- [x] Circulation : voies, arcs, freinage, réservations de séquences, A* à tas, chemins en cache
+- [x] Interface : barre supérieure (jour, mois, score), colonne d'outils, compteurs, menu pause + paramètres, écran de fin, responsive, Theme central
+- [x] Caméra : zoom fluide borné, déplacement sûr, marges d'interface
+- [x] Gameplay : horloge unique, jours/mois, score, difficulté progressive, récompense « circulation », statistiques de fin
+- [x] Serveur : validation et limites de débit, DataStore robuste, éclairage doux
+- [x] Harnais de tests headless : 980 tests verts, `bash tests/run.sh`
+- [x] Audit des pièges du moteur Roblox : décalage des clics, passage des clics à travers les panneaux, cylindres, ponts, tweens
+- [ ] Test manuel complet dans Roblox Studio (à faire par l'utilisateur) : rendu, positions des clics, UI à plusieurs résolutions, menus
+- [ ] Coin intérieur des virages arrondi
+- [ ] Voies partagées pour le trafic traversant (rues bordées de maisons)

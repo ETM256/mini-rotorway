@@ -1,328 +1,272 @@
 --[[
 	MapPreview.luau
-	Dessine l'aperçu circulaire d'une carte dans le menu :
-	une géographie d'eau lissée + quelques routes + des points colorés.
-	Aucune image nécessaire.
+	Dessine l'aperçu circulaire d'une carte dans le menu, avec les formes de
+	Maps.luau et le même ordre de superposition que WorldBuilder : parcs, liseré
+	de côte, eau, puis presqu'îles (liseré, terre sèche). Viennent ensuite le
+	réseau et les maisons. Aucune image, aucun libellé.
+
+	Roblox n'a pas d'ellipse native. Une forme elliptique est donc un seul Frame
+	dont les coins ont un rayon de 50 % : un disque si rx = ry, sinon une capsule
+	de même encombrement que l'ellipse. Le grand axe suit rx, comme dans
+	Maps.isWaterAt. Les bouts arrondis des ellipses allongées sont plus pleins
+	qu'une vraie ellipse ; les maisons, elles, ne sont jamais posées sur l'eau.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Maps = require(Shared.Maps)
 
 local Theme = require(script.Parent.Theme)
 
+local C = Config.Colors
+
 local MapPreview = {}
 
--- Dessine une forme d'eau sans passer par une grille de gros pixels.
--- Les formes sont volontairement simples : rectangles arrondis, disques,
--- ellipses et barres. Elles se superposent pour donner une côte ou une
--- rivière continue, puis le cercle de l'aperçu les découpe.
-local function drawWaterShape(circle, shape, diameter, color, padding, zIndex)
-	padding = padding or 0
-	zIndex = zIndex or 1
+-- Réglages, en fractions du diamètre sauf indication contraire (px).
+local RING_PADDING = 4 -- px entre le disque et son halo
+local HALO_TRANSPARENCY = 0.55 -- halo très doux, pas de liseré dur
+-- Liseré de côte : la même épaisseur relative qu'en 3D (Terrain.Shoreline sur
+-- le côté du plateau), avec un minimum pour rester visible sur un petit aperçu.
+local BOARD_EXTENT = Config.Grid.Size * Config.Grid.TileSize
+local SHORE_RATIO = Config.Terrain.Shoreline / BOARD_EXTENT
+local SHORE_MIN = 1.8 -- px
+local ROAD_THICKNESS = 0.03
+local HOUSE_RATIO = 0.075
+local HOUSE_MIN = 12 -- px
+local DEFAULT_BAR_THICKNESS = 0.04
+local MIN_SIZE = 0.5 -- px : une forme plus petite n'est pas dessinée
+
+-- Cadre centré en (x, y), sans bordure. Le zIndex range la forme dans l'ordre
+-- de superposition ; rotation est en degrés, sens horaire comme Roblox.
+local function addFrame(parent, x, y, width, height, color, zIndex, rotation)
+	return Theme.new("Frame", {
+		Parent = parent,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(width, height),
+		Rotation = rotation or 0,
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		ZIndex = zIndex,
+	})
+end
+
+-- Coins à 50 % : le cadre devient un disque (carré) ou une capsule (rectangle).
+local function roundEnds(frame)
+	Theme.corner(frame, UDim.new(0.5, 0))
+end
+
+-- Disque centré en (x, y).
+local function addDisc(parent, x, y, size, color, zIndex)
+	local disc = addFrame(parent, x, y, size, size, color, zIndex)
+	roundEnds(disc)
+	return disc
+end
+
+-- Ellipse : un seul Frame tourné. Le grand axe suit rx dans le repère de la
+-- forme (même règle que Maps.isWaterAt), donc tourné de 90 degrés si ry est le
+-- plus grand. Un liseré (grow) élargit l'ellipse de chaque côté.
+local function drawEllipse(parent, shape, diameter, color, grow, zIndex)
+	local rxNorm = shape.rx or shape.r or 0.05
+	local ryNorm = shape.ry or shape.r or rxNorm
+	local rx = rxNorm * diameter + grow
+	local ry = ryNorm * diameter + grow
+	local minor = math.min(rx, ry)
+	local major = math.max(rx, ry)
+	if minor < MIN_SIZE then
+		return
+	end
+
+	local rotation = shape.rotation or 0
+	if ry > rx then
+		rotation += 90
+	end
+	local blob = addFrame(
+		parent,
+		shape.x * diameter,
+		shape.y * diameter,
+		major * 2,
+		minor * 2,
+		color,
+		zIndex,
+		rotation
+	)
+	roundEnds(blob)
+end
+
+-- Segment épais de (x1, y1) à (x2, y2). Par défaut les deux bouts sont ronds
+-- (une seule capsule). Avec flatStart, le bout x1 est une coupe nette côté
+-- terre et seul le bout x2 reçoit un capuchon rond, comme en 3D.
+local function drawBar(parent, shape, diameter, color, grow, zIndex)
+	local x1 = shape.x1 * diameter
+	local y1 = shape.y1 * diameter
+	local x2 = shape.x2 * diameter
+	local y2 = shape.y2 * diameter
+	local dx = x2 - x1
+	local dy = y2 - y1
+	local length = math.sqrt(dx * dx + dy * dy)
+	if length <= 0 then
+		return
+	end
+	local thickness = (shape.thickness or DEFAULT_BAR_THICKNESS) * diameter + grow * 2
+	local angle = math.deg(math.atan2(dy, dx))
+	local centerX = (x1 + x2) * 0.5
+	local centerY = (y1 + y2) * 0.5
+
+	if shape.flatStart then
+		addFrame(parent, centerX, centerY, length, thickness, color, zIndex, angle)
+		addDisc(parent, x2, y2, thickness, color, zIndex)
+		return
+	end
+
+	-- Capsule : chaque bout rond dépasse du rayon, d'où length + thickness.
+	local capsule = addFrame(parent, centerX, centerY, length + thickness, thickness, color, zIndex, angle)
+	roundEnds(capsule)
+end
+
+-- Rectangle de Maps (rect) : un cadre, avec un arrondi seulement si la forme
+-- en demande un. grow élargit le rectangle de chaque côté.
+local function drawRect(parent, shape, diameter, color, grow, zIndex)
+	local frame = Theme.new("Frame", {
+		Parent = parent,
+		Position = UDim2.fromOffset(shape.x * diameter - grow, shape.y * diameter - grow),
+		Size = UDim2.fromOffset(shape.w * diameter + grow * 2, shape.h * diameter + grow * 2),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		ZIndex = zIndex,
+	})
+	local radius = (shape.radius or 0) * diameter + grow
+	if radius > 0 then
+		Theme.corner(frame, radius)
+	end
+end
+
+-- Dessine une forme de Maps.luau (rect, ellipse, circle, bar). grow élargit la
+-- forme de chaque côté : c'est ainsi que le liseré de côte est tracé.
+local function drawShape(parent, shape, diameter, color, grow, zIndex)
 	local kind = shape.type
-
 	if kind == "rect" then
-		local frame = Theme.new("Frame", {
-			Parent = circle,
-			Position = UDim2.fromOffset(
-				shape.x * diameter - padding,
-				shape.y * diameter - padding
-			),
-			Size = UDim2.fromOffset(
-				shape.w * diameter + padding * 2,
-				shape.h * diameter + padding * 2
-			),
-			BackgroundColor3 = color,
-			BorderSizePixel = 0,
-			ZIndex = zIndex,
-		})
-		Theme.corner(frame, (shape.radius or 0) * diameter + padding)
-		return
-	end
-
-	if kind == "circle" or kind == "ellipse" then
-		local baseRx = shape.rx or shape.r or 0.05
-		local baseRy = shape.ry or shape.r or baseRx
-		local rx = baseRx * diameter + padding
-		local ry = baseRy * diameter + padding
-
-		-- Un Frame avec UICorner donne une capsule, pas une vraie ellipse.
-		-- On approche donc l'ellipse par une chaîne de cercles dont le rayon
-		-- suit la largeur de l'ellipse le long de son grand axe.
-		if math.abs(rx - ry) <= math.max(0.35, math.min(rx, ry) * 0.04) then
-			local blob = Theme.new("Frame", {
-				Parent = circle,
-				Position = UDim2.fromScale(shape.x, shape.y),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Size = UDim2.fromOffset(rx * 2, ry * 2),
-				Rotation = shape.rotation or 0,
-				BackgroundColor3 = color,
-				BorderSizePixel = 0,
-				ZIndex = zIndex,
-			})
-			Theme.corner(blob, math.min(rx, ry))
-			return
-		end
-
-		local baseMajor = math.max(baseRx, baseRy) * diameter
-		local baseMinor = math.min(baseRx, baseRy) * diameter
-		local angle = math.rad(shape.rotation or 0)
-		if baseRy > baseRx then
-			angle += math.pi / 2
-		end
-		local axisX = math.cos(angle)
-		local axisY = math.sin(angle)
-		local count = math.clamp(math.ceil(baseMajor / 1.6), 5, 32)
-		local centerX = shape.x * diameter
-		local centerY = shape.y * diameter
-
-		for i = 0, count - 1 do
-			local theta = -math.pi / 2 + math.pi * (i / (count - 1))
-			local offset = baseMajor * math.sin(theta)
-			local radius = baseMinor * math.cos(theta)
-			if radius < 0.35 then
-				radius = 0.35
-			end
-			local size = (radius + padding) * 2
-			local dot = Theme.new("Frame", {
-				Parent = circle,
-				Position = UDim2.fromOffset(
-					centerX + offset * axisX - size * 0.5,
-					centerY + offset * axisY - size * 0.5
-				),
-				Size = UDim2.fromOffset(size, size),
-				BackgroundColor3 = color,
-				BorderSizePixel = 0,
-				ZIndex = zIndex,
-			})
-			Theme.corner(dot, size * 0.5)
-		end
-		return
-	end
-
-	if kind == "bar" then
-		local dx = (shape.x2 - shape.x1) * diameter
-		local dy = (shape.y2 - shape.y1) * diameter
-		local length = math.sqrt(dx * dx + dy * dy)
-		local angle = math.deg(math.atan2(dy, dx))
-		local thickness = (shape.thickness or 0.04) * diameter + padding * 2
-		local centerX = (shape.x1 + shape.x2) * 0.5 * diameter
-		local centerY = (shape.y1 + shape.y2) * 0.5 * diameter
-
-		if shape.flatStart then
-			-- Coupure nette côté terre : un rectangle jusqu'au bout, puis
-			-- un seul capuchon rond côté eau. Même principe que la 3D.
-			Theme.new("Frame", {
-				Parent = circle,
-				Position = UDim2.fromOffset(centerX, centerY),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Size = UDim2.fromOffset(length, thickness),
-				Rotation = angle,
-				BackgroundColor3 = color,
-				BorderSizePixel = 0,
-				ZIndex = zIndex,
-			})
-			local cap = Theme.new("Frame", {
-				Parent = circle,
-				Position = UDim2.fromOffset(shape.x2 * diameter, shape.y2 * diameter),
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Size = UDim2.fromOffset(thickness, thickness),
-				BackgroundColor3 = color,
-				BorderSizePixel = 0,
-				ZIndex = zIndex,
-			})
-			Theme.corner(cap, thickness / 2)
-			return
-		end
-
-		local bar = Theme.new("Frame", {
-			Parent = circle,
-			Position = UDim2.fromOffset(centerX, centerY),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Size = UDim2.fromOffset(length + thickness * 0.5, thickness),
-			Rotation = angle,
-			BackgroundColor3 = color,
-			BorderSizePixel = 0,
-			ZIndex = zIndex,
-		})
-		Theme.corner(bar, thickness / 2)
+		drawRect(parent, shape, diameter, color, grow, zIndex)
+	elseif kind == "circle" or kind == "ellipse" then
+		drawEllipse(parent, shape, diameter, color, grow, zIndex)
+	elseif kind == "bar" then
+		drawBar(parent, shape, diameter, color, grow, zIndex)
 	end
 end
 
 function MapPreview.create(parent, map, diameter, position, anchorPoint)
-	-- Le cercle est posé sur un anneau beige, avec un liseré menthe foncé :
-	-- on retrouve le cadre de la référence, sans image.
+	local id = tostring(map.id or "map")
+	local land = map.land or C.Land
+	local water = map.water or C.Water
+	local grass = map.grass or C.Park
+	local coast = C.Coast
+	local outline = math.max(SHORE_MIN, diameter * SHORE_RATIO)
+
+	local grassShapes = map.grassShapes or {}
+	local waterShapes = map.waterShapes or {}
+	local dryShapes = map.dryShapes or {}
+	-- Même règle d'eau que la construction (Maps.isWaterAt) : une presqu'île
+	-- retire de l'eau, tout le reste est de l'eau si une forme d'eau le couvre.
+	local terrain = { waterShapes = waterShapes, dryShapes = dryShapes }
+
+	local wrapperSize = diameter + RING_PADDING * 2
 	local wrapper = Theme.new("Frame", {
-		Name = "PreviewFrame_" .. map.id,
+		Name = "PreviewFrame_" .. id,
 		Parent = parent,
 		Position = position or UDim2.fromScale(0.5, 0),
 		AnchorPoint = anchorPoint or Vector2.new(0.5, 0),
-		Size = UDim2.fromOffset(diameter + 8, diameter + 8),
+		Size = UDim2.fromOffset(wrapperSize, wrapperSize),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ZIndex = 1,
 	})
-	Theme.circle(wrapper, diameter + 8, Config.Colors.RingShadow or Color3.fromHex("D3CDB8"), {
+	-- Halo doux, sans liseré : le cercle se détache par la couleur, pas par un trait.
+	Theme.circle(wrapper, wrapperSize, C.RingShadow, {
+		Name = "Halo",
 		Position = UDim2.fromScale(0.5, 0.5),
 		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = HALO_TRANSPARENCY,
 		ZIndex = 1,
 	})
 
-	-- CanvasGroup, et non Frame : contrairement à ClipsDescendants seul, il
-	-- découpe réellement les enfants selon les coins arrondis. L'eau ne peut
-	-- donc plus déborder dans les angles du cercle.
+	-- CanvasGroup : il découpe réellement ses enfants selon le cercle, donc l'eau
+	-- ne déborde jamais dans les angles.
 	local circle = Theme.new("CanvasGroup", {
-		Name = "Preview_" .. map.id,
+		Name = "Preview_" .. id,
 		Parent = wrapper,
-		Position = UDim2.fromOffset(4, 4),
+		Position = UDim2.fromOffset(RING_PADDING, RING_PADDING),
 		Size = UDim2.fromOffset(diameter, diameter),
-		BackgroundColor3 = map.land,
+		BackgroundColor3 = land,
 		BorderSizePixel = 0,
 		ZIndex = 2,
 	})
 	Theme.corner(circle, diameter / 2)
-	Theme.stroke(circle, Config.Colors.Ring or Color3.fromHex("88B5A7"), math.max(4, diameter * 0.03), 0)
 
-	-- Zones vertes douces, comme les parcs de la vidéo.
-	for _, shape in ipairs(map.grassShapes or {}) do
-		drawWaterShape(circle, shape, diameter, map.grass or Config.Colors.Grass, 0, 1)
+	-- Ordre identique à WorldBuilder : parcs, liseré puis eau, presqu'îles.
+	for _, shape in ipairs(grassShapes) do
+		drawShape(circle, shape, diameter, grass, 0, 1)
+	end
+	for _, shape in ipairs(waterShapes) do
+		drawShape(circle, shape, diameter, coast, outline, 2)
+	end
+	for _, shape in ipairs(waterShapes) do
+		drawShape(circle, shape, diameter, water, 0, 3)
+	end
+	for _, shape in ipairs(dryShapes) do
+		drawShape(circle, shape, diameter, coast, outline, 4)
+	end
+	for _, shape in ipairs(dryShapes) do
+		drawShape(circle, shape, diameter, land, 0, 5)
 	end
 
-	-- Eau lissée : chaque carte fournit ses formes dans Maps.luau.
-	-- Ombre extérieure, liseré de côte blanc, puis remplissage menthe.
-	local waterShapes = map.waterShapes
-	local outline = math.max(1.8, diameter * 0.015)
-	local coastColor = Config.Colors.Coast or Color3.fromHex("FFFFF7")
-	if waterShapes and #waterShapes > 0 then
-		local shadowColor = map.waterDeep or Config.Colors.WaterDeep
-		for _, shape in ipairs(waterShapes) do
-			drawWaterShape(circle, shape, diameter, shadowColor, outline * 1.8, 1)
+	-- Réseau : routes anthracite de largeur uniforme, comme en jeu.
+	local roads = map.previewRoads or {}
+	for _, road in ipairs(roads) do
+		if road[1] and road[2] and road[3] and road[4] then
+			drawBar(circle, {
+				x1 = road[1],
+				y1 = road[2],
+				x2 = road[3],
+				y2 = road[4],
+				thickness = ROAD_THICKNESS,
+			}, diameter, C.Road, 0, 7)
 		end
-		for _, shape in ipairs(waterShapes) do
-			drawWaterShape(circle, shape, diameter, coastColor, outline * 0.95, 2)
-		end
-		for _, shape in ipairs(waterShapes) do
-			drawWaterShape(circle, shape, diameter, map.water, 0, 3)
-		end
-	else
-		-- Filet de sécurité si une carte n'a pas encore de waterShapes.
-		local cells = 24
-		local cell = diameter / cells
-		for gx = 0, cells - 1 do
-			for gy = 0, cells - 1 do
-				local nx = (gx + 0.5) / cells
-				local ny = (gy + 0.5) / cells
-				if map.isWater(nx, ny) then
-					Theme.new("Frame", {
-						Parent = circle,
-						Position = UDim2.fromOffset(gx * cell, gy * cell),
-						Size = UDim2.fromOffset(cell + 0.5, cell + 0.5),
-						BackgroundColor3 = map.water,
-						BorderSizePixel = 0,
-						ZIndex = 1,
-					})
+	end
+
+	-- Maisons : extrémités des routes, hors des bords et hors de l'eau. Chacune a
+	-- une ombre décalée, sans contour.
+	local houses = Config.HouseColors
+	local houseSize = math.max(HOUSE_MIN, diameter * HOUSE_RATIO)
+	local seen = {}
+	for index, road in ipairs(roads) do
+		local points = { { road[1], road[2] }, { road[3], road[4] } }
+		for pointIndex, point in ipairs(points) do
+			local nx = point[1]
+			local ny = point[2]
+			if type(nx) == "number" and type(ny) == "number" then
+				-- Clé entière au millième : deux extrémités identiques ne tracent qu'une maison.
+				local key = math.floor(nx * 1000 + 0.5) * 1000 + math.floor(ny * 1000 + 0.5)
+				local inside = nx > 0.02 and nx < 0.98 and ny > 0.02 and ny < 0.98
+				if not seen[key] and inside and not Maps.isWaterAt(terrain, nx, ny) then
+					seen[key] = true
+					local color = C.Teal
+					if #houses > 0 then
+						color = houses[(index + pointIndex - 1) % #houses + 1].color
+					end
+					local x = nx * diameter
+					local y = ny * diameter
+					local shadow = addFrame(circle, x, y + Theme.Shadow.Offset, houseSize, houseSize, C.CardShadow, 8)
+					shadow.Name = "HouseShadow"
+					shadow.BackgroundTransparency = Theme.Shadow.Transparency
+					Theme.corner(shadow, Theme.Radius.Small)
+					local house = addFrame(circle, x, y, houseSize, houseSize, color, 9)
+					house.Name = "House"
+					Theme.corner(house, Theme.Radius.Small)
 				end
 			end
 		end
-	end
-
-	-- Presqu'îles sèches dessinées par-dessus l'eau : liseré de côte blanc,
-	-- puis terre crème. Le petit raccord terre masque le liseré côté continent.
-	for _, shape in ipairs(map.dryShapes or {}) do
-		drawWaterShape(circle, shape, diameter, coastColor, outline * 0.95, 4)
-	end
-	for _, shape in ipairs(map.dryShapes or {}) do
-		drawWaterShape(circle, shape, diameter, map.land, 0, 5)
-	end
-	for _, shape in ipairs(map.dryPatches or {}) do
-		drawWaterShape(circle, shape, diameter, map.land, 0, 6)
-	end
-
-	-- Petit réseau routier et pastilles de bâtiments : l'aperçu ressemble
-	-- davantage à une carte jouable, sans surcharger le cercle.
-	local roads = map.previewRoads or {}
-	local roadWidth = math.max(5, diameter * 0.030)
-	local roadColor = Config.Colors.LobbyRoad or Config.Colors.White
-	local roadShadow = Config.Colors.LobbyRoadShadow or Config.Colors.CardShadow
-
-	local function drawPreviewRoad(road, color, width, offsetX, offsetY, zIndex)
-		local ax = road[1] * diameter + offsetX
-		local ay = road[2] * diameter + offsetY
-		local bx = road[3] * diameter + offsetX
-		local by = road[4] * diameter + offsetY
-		local dx = bx - ax
-		local dy = by - ay
-		local length = math.sqrt(dx * dx + dy * dy)
-		if length <= 0 then
-			return
-		end
-		local bar = Theme.new("Frame", {
-			Parent = circle,
-			Position = UDim2.fromOffset((ax + bx) * 0.5, (ay + by) * 0.5),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Size = UDim2.fromOffset(length + width * 0.5, width),
-			Rotation = math.deg(math.atan2(dy, dx)),
-			BackgroundColor3 = color,
-			BorderSizePixel = 0,
-			ZIndex = zIndex,
-		})
-		Theme.corner(bar, width / 2)
-	end
-
-	for _, road in ipairs(roads) do
-		drawPreviewRoad(road, roadShadow, roadWidth + 3, 1.5, 2, 6)
-	end
-	for _, road in ipairs(roads) do
-		drawPreviewRoad(road, roadColor, roadWidth, 0, 0, 7)
-	end
-
-	local endpoints = {}
-	local seen = {}
-	local buildingSize = math.max(14, diameter * 0.075)
-	for index, road in ipairs(roads) do
-		for pointIndex = 1, 2 do
-			local nx = road[pointIndex == 1 and 1 or 3]
-			local ny = road[pointIndex == 1 and 2 or 4]
-			local key = string.format("%.3f:%.3f", nx, ny)
-			if not seen[key]
-				and nx > 0.02
-				and nx < 0.98
-				and ny > 0.02
-				and ny < 0.98
-				and not (map.isWater and map.isWater(nx, ny))
-			then
-				seen[key] = true
-				table.insert(endpoints, { x = nx, y = ny, index = index + pointIndex })
-			end
-		end
-	end
-
-	for _, endpoint in ipairs(endpoints) do
-		local x = endpoint.x * diameter
-		local y = endpoint.y * diameter
-		local palette = Config.HouseColors[(endpoint.index - 1) % #Config.HouseColors + 1]
-		local shadow = Theme.new("Frame", {
-			Parent = circle,
-			Position = UDim2.fromOffset(x - buildingSize * 0.5 + 1.5, y - buildingSize * 0.5 + 2),
-			Size = UDim2.fromOffset(buildingSize, buildingSize),
-			BackgroundColor3 = roadShadow,
-			BackgroundTransparency = 0.25,
-			BorderSizePixel = 0,
-			ZIndex = 8,
-		})
-		Theme.corner(shadow, 4)
-		local building = Theme.new("Frame", {
-			Parent = circle,
-			Position = UDim2.fromOffset(x - buildingSize * 0.5, y - buildingSize * 0.5),
-			Size = UDim2.fromOffset(buildingSize, buildingSize),
-			BackgroundColor3 = palette.color,
-			BorderSizePixel = 0,
-			ZIndex = 9,
-		})
-		Theme.corner(building, 4)
-		Theme.stroke(building, roadColor, 1.5, 0)
 	end
 
 	return circle

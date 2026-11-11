@@ -1,40 +1,23 @@
 --[[
 	Maps.luau
 	Les villes du jeu. Chaque carte décrit :
-	  - son nom / sa description / ses couleurs
+	  - son nom / sa description / son mode / les couleurs de son en-tête
 	  - sa géographie : waterShapes, dryShapes et grassShapes, des formes
-	    normalisées (0..1) utilisées à la fois par l'aperçu du menu et par le
-	    rendu 3D
+	    normalisées (0..1). Ce sont les seules données de terrain : l'aperçu
+	    du menu, le rendu 3D et la règle de construction (Maps.isWater) les
+	    lisent toutes les trois, donc elles ne peuvent pas se contredire.
 	  - un petit tracé de routes pour l'aperçu circulaire du menu
-	  - les étiquettes verticales visibles sur la bordure de la carte
+
+	Les rivières et côtes sont des chaînes d'ellipses tournées : une seule
+	pièce par ellipse au rendu, et des contours doux. Une rivière compte un
+	segment par ellipse, rx suivant le segment : une barre coûte trois pièces
+	par couche (corps et deux bouts), une ellipse une seule.
 ]]
 
 local Config = require(script.Parent.Config)
 local C = Config.Colors
 
 local Maps = {}
-
-local function circle(nx, ny, cx, cy, rx, ry)
-	local dx = (nx - cx) / rx
-	local dy = (ny - cy) / ry
-	return dx * dx + dy * dy <= 1
-end
-
--- Distance à un segment normalisé : sert aux chenaux et aux bandes d'eau.
-local function segment(nx, ny, x1, y1, x2, y2, thickness)
-	local dx = x2 - x1
-	local dy = y2 - y1
-	local lengthSquared = dx * dx + dy * dy
-	if lengthSquared <= 0 then
-		return false
-	end
-	local t = ((nx - x1) * dx + (ny - y1) * dy) / lengthSquared
-	t = math.clamp(t, 0, 1)
-	local px = x1 + dx * t
-	local py = y1 + dy * t
-	local radius = thickness * 0.5
-	return (nx - px) * (nx - px) + (ny - py) * (ny - py) <= radius * radius
-end
 
 local list = {
 	{
@@ -44,42 +27,42 @@ local list = {
 		description = "Reliez les quartiers de Dubaï et traversez la marina avant la fin du temps imparti.",
 		header = Color3.fromHex("F8DB95"),
 		accent = Color3.fromHex("E8C37A"),
-		labels = {
-			{ text = "DUBAÏ", side = "right" },
-			{ text = "MARINA", side = "left" },
-		},
 		previewRoads = {
 			{ 0.22, 0.22, 0.72, 0.22 },
 			{ 0.72, 0.22, 0.72, 0.58 },
 			{ 0.30, 0.48, 0.76, 0.48 },
 			{ 0.30, 0.48, 0.30, 0.76 },
 		},
+		-- Golfe au sud, côte basse et légèrement ondulée.
+		-- Marina : un chenal étroit qui pénètre dans la terre.
 		waterShapes = {
-			{ type = "rect", x = -0.12, y = 0.83, w = 1.28, h = 0.35, radius = 0.08 },
-			{ type = "bar", x1 = 0.22, y1 = 0.84, x2 = 0.43, y2 = 0.62, thickness = 0.070 },
-			{ type = "bar", x1 = 0.43, y1 = 0.62, x2 = 0.60, y2 = 0.82, thickness = 0.060 },
-			{ type = "ellipse", x = 0.76, y = 0.34, rx = 0.115, ry = 0.075 },
-			{ type = "ellipse", x = 0.60, y = 0.18, rx = 0.070, ry = 0.045 },
+			{ type = "ellipse", x = 0.240, y = 0.849, rx = 0.181, ry = 0.090, rotation = 5.7 },
+			{ type = "ellipse", x = 0.240, y = 0.847, rx = 0.181, ry = 0.090, rotation = 8.0 },
+			{ type = "ellipse", x = 0.398, y = 0.850, rx = 0.132, ry = 0.090, rotation = 1.4 },
+			{ type = "ellipse", x = 0.618, y = 0.848, rx = 0.133, ry = 0.090, rotation = -11.3 },
+			{ type = "ellipse", x = 0.761, y = 0.847, rx = 0.181, ry = 0.090, rotation = -9.1 },
+			{ type = "ellipse", x = 0.760, y = 0.849, rx = 0.181, ry = 0.090, rotation = -5.7 },
+			{ type = "ellipse", x = 0.730, y = 0.879, rx = 0.062, ry = 0.043, rotation = -104.0 },
+			{ type = "ellipse", x = 0.710, y = 0.790, rx = 0.072, ry = 0.043, rotation = -101.3 },
+			{ type = "ellipse", x = 0.690, y = 0.690, rx = 0.072, ry = 0.043, rotation = -101.3 },
+			{ type = "ellipse", x = 0.690, y = 0.605, rx = 0.058, ry = 0.043, rotation = -74.1 },
+			{ type = "ellipse", x = 0.700, y = 0.540, rx = 0.050, ry = 0.040, rotation = 0 },
+			-- Rivière sinueuse du bord nord au bord sud, qui traverse le golfe : elle coupe
+			-- la ville en deux et se franchit par un pont.
+			{ type = "ellipse", x = 0.284, y = 0.130, rx = 0.112, ry = 0.035, rotation = 101.2 },
+			{ type = "ellipse", x = 0.292, y = 0.335, rx = 0.112, ry = 0.035, rotation = 72.5 },
+			{ type = "ellipse", x = 0.306, y = 0.520, rx = 0.103, ry = 0.035, rotation = 100.1 },
+			{ type = "ellipse", x = 0.304, y = 0.700, rx = 0.103, ry = 0.035, rotation = 81.2 },
+			{ type = "ellipse", x = 0.340, y = 0.887, rx = 0.100, ry = 0.035, rotation = 77.5 },
+			-- Lacs intérieurs, coupés par la grille mais jamais au centre.
+			{ type = "ellipse", x = 0.800, y = 0.300, rx = 0.100, ry = 0.065, rotation = -20 },
+			{ type = "ellipse", x = 0.270, y = 0.180, rx = 0.070, ry = 0.045, rotation = 10 },
 		},
+		-- Parcs discrets, éloignés des rivages.
 		grassShapes = {
-			{ type = "ellipse", x = 0.36, y = 0.36, rx = 0.14, ry = 0.09 },
-			{ type = "ellipse", x = 0.80, y = 0.68, rx = 0.12, ry = 0.08 },
+			{ type = "ellipse", x = 0.440, y = 0.300, rx = 0.070, ry = 0.045, rotation = 0 },
+			{ type = "ellipse", x = 0.160, y = 0.560, rx = 0.060, ry = 0.045, rotation = 0 },
 		},
-		isWater = function(nx, ny)
-			if ny > 0.84 + 0.018 * math.sin(nx * 12) then
-				return true
-			end
-			if math.abs(0.52 * nx + ny - 0.98) < 0.035 and nx > 0.22 and nx < 0.60 then
-				return true
-			end
-			if circle(nx, ny, 0.76, 0.34, 0.115, 0.075) then
-				return true
-			end
-			if circle(nx, ny, 0.60, 0.18, 0.070, 0.045) then
-				return true
-			end
-			return false
-		end,
 	},
 	{
 		id = "los_angeles",
@@ -88,46 +71,37 @@ local list = {
 		description = "Gérez le quadrillage d'autoroutes de la métropole californienne grandissante.",
 		header = Color3.fromHex("FFDD94"),
 		accent = Color3.fromHex("E8C37A"),
-		land = Color3.fromHex("FFF8DC"),
-		water = Color3.fromHex("A5DAC6"),
-		waterEdge = Color3.fromHex("8FC9B7"),
-		waterDeep = Color3.fromHex("7FB7A5"),
-		grass = Color3.fromHex("EFEC8C"),
-		labels = {
-			{ text = "LOS ANGELES", side = "right" },
-			{ text = "SANTA MONICA", side = "left" },
-		},
 		previewRoads = {
 			{ 0.27, 0.12, 0.27, 0.54 },
 			{ 0.27, 0.54, 0.52, 0.54 },
 			{ 0.52, 0.54, 0.52, 0.88 },
 			{ 0.52, 0.54, 0.78, 0.54 },
 		},
-		-- La côte ouest est une goutte d'eau inclinée qui reste à l'intérieur
-		-- du cercle. La baie du bas est large et arrondie, avec une presqu'île
-		-- centrale, et le chenal vertical finit dans cette baie.
-		-- Les ellipses tournées reprennent les formes de la référence :
-		-- rotation en degrés dans le repère de l'écran (x à droite, y en bas).
+		-- La côte ouest est une goutte d'eau inclinée, complétée par des
+		-- ellipses fines le long de la côte. La baie du bas est large et arrondie,
+		-- avec une presqu'île centrale ; le chenal du nord finit dans la baie.
+		-- Rotation en degrés dans le repère de l'écran (x à droite, y en bas).
 		waterShapes = {
-			-- Côte ouest : une grande ellipse inclinée, complétée par des
-			-- capsules le long de la côte pour casser le côté « ovale ».
-			{ type = "ellipse", x = 0.1548, y = 0.5708, rx = 0.0955, ry = 0.2236, rotation = 163.3 },
-			{ type = "bar", x1 = 0.060, y1 = 0.310, x2 = 0.100, y2 = 0.380, thickness = 0.055 },
-			{ type = "bar", x1 = 0.065, y1 = 0.340, x2 = 0.120, y2 = 0.620, thickness = 0.060 },
-			{ type = "bar", x1 = 0.090, y1 = 0.600, x2 = 0.160, y2 = 0.760, thickness = 0.070 },
-			{ type = "ellipse", x = 0.2200, y = 0.8200, rx = 0.0900, ry = 0.0450, rotation = 15 },
-			-- Baie du bas : grande ellipse couchée, bord supérieur presque
-			-- droit et lobe de droite en capsule, comme sur la référence.
-			{ type = "ellipse", x = 0.5570, y = 0.8070, rx = 0.1010, ry = 0.2790, rotation = 81.4 },
-			{ type = "bar", x1 = 0.580, y1 = 0.700, x2 = 0.870, y2 = 0.740, thickness = 0.060 },
-			{ type = "bar", x1 = 0.700, y1 = 0.750, x2 = 0.860, y2 = 0.760, thickness = 0.080 },
-			-- Chenal vertical, fin, qui rejoint la baie.
-			{ type = "bar", x1 = 0.70, y1 = 0.32, x2 = 0.70, y2 = 0.70, thickness = 0.018 },
-			{ type = "ellipse", x = 0.70, y = 0.70, rx = 0.075, ry = 0.050 },
+			{ type = "ellipse", x = 0.172, y = 0.571, rx = 0.096, ry = 0.224, rotation = 163.3 },
+			{ type = "ellipse", x = 0.102, y = 0.480, rx = 0.158, ry = 0.030, rotation = 78.9 },
+			{ type = "ellipse", x = 0.125, y = 0.680, rx = 0.105, ry = 0.035, rotation = 66.4 },
+			{ type = "ellipse", x = 0.220, y = 0.820, rx = 0.090, ry = 0.045, rotation = 15 },
+			{ type = "ellipse", x = 0.557, y = 0.807, rx = 0.101, ry = 0.279, rotation = 81.4 },
+			-- Chenal qui traverse la ville du nord au sud, à l'ouest du centre : un pont
+			-- est nécessaire pour relier les quartiers de part et d'autre.
+			{ type = "ellipse", x = 0.298, y = 0.125, rx = 0.105, ry = 0.035, rotation = 94.2 },
+			{ type = "ellipse", x = 0.310, y = 0.315, rx = 0.099, ry = 0.035, rotation = 76.8 },
+			{ type = "ellipse", x = 0.306, y = 0.480, rx = 0.096, ry = 0.035, rotation = 106.7 },
+			{ type = "ellipse", x = 0.306, y = 0.650, rx = 0.105, ry = 0.035, rotation = 75.1 },
+			{ type = "ellipse", x = 0.346, y = 0.863, rx = 0.123, ry = 0.035, rotation = 82.8 },
+			-- Petit étang d'une case, au nord : un point de passage pour un pont.
+			{ type = "ellipse", x = 0.4722, y = 0.1389, rx = 0.030, ry = 0.030, rotation = 0 },
+			{ type = "ellipse", x = 0.725, y = 0.720, rx = 0.161, ry = 0.030, rotation = 7.9 },
+			{ type = "ellipse", x = 0.780, y = 0.755, rx = 0.100, ry = 0.040, rotation = 3.6 },
+			{ type = "ellipse", x = 0.700, y = 0.700, rx = 0.075, ry = 0.050, rotation = 0 },
 		},
 		-- Presqu'île crème au centre de la baie : le raccord au continent
-		-- est coupé à ras du littoral, sans gros capuchon rond. Seule la
-		-- pointe côté eau reste arrondie.
+		-- est coupé à ras du littoral, seule la pointe côté eau reste arrondie.
 		dryShapes = {
 			{
 				type = "bar",
@@ -140,14 +114,10 @@ local list = {
 			},
 		},
 		grassShapes = {
-			-- Parc allongé en haut à droite, avec un petit point détaché.
-			{ type = "ellipse", x = 0.7905, y = 0.1976, rx = 0.0526, ry = 0.1187, rotation = 140.6 },
-			{ type = "circle", x = 0.88, y = 0.28, r = 0.020 },
-			-- Parc étroit qui longe la côte ouest.
-			{ type = "ellipse", x = 0.2019, y = 0.3646, rx = 0.0275, ry = 0.1261, rotation = 145.9 },
-			-- Parc de la presqu'île, en bas à gauche.
-			{ type = "ellipse", x = 0.310, y = 0.700, rx = 0.080, ry = 0.120, rotation = 54 },
-			{ type = "circle", x = 0.35, y = 0.72, r = 0.018 },
+			-- Parc allongé en haut à droite.
+			{ type = "ellipse", x = 0.790, y = 0.198, rx = 0.053, ry = 0.119, rotation = 140.6 },
+			-- Parc du nord-ouest, loin de la côte et du chenal.
+			{ type = "ellipse", x = 0.170, y = 0.160, rx = 0.050, ry = 0.040, rotation = 0 },
 		},
 	},
 	{
@@ -157,43 +127,35 @@ local list = {
 		description = "Construisez les routes qui permettent aux millions d'habitants de Pékin d'arriver au travail à l'heure.",
 		header = Color3.fromHex("7AA09E"),
 		accent = Color3.fromHex("5F8A88"),
-		labels = {
-			{ text = "PÉKIN", side = "right" },
-			{ text = "HAIDIAN", side = "left" },
-		},
 		previewRoads = {
 			{ 0.18, 0.34, 0.82, 0.34 },
 			{ 0.55, 0.18, 0.55, 0.78 },
 			{ 0.34, 0.56, 0.82, 0.56 },
 			{ 0.18, 0.34, 0.18, 0.62 },
 		},
+		-- Fleuve sinueux qui traverse le nord de la ville, d'un bord à l'autre.
 		waterShapes = {
-			{ type = "rect", x = -0.10, y = -0.12, w = 1.20, h = 0.20, radius = 0.06 },
-			{ type = "bar", x1 = -0.05, y1 = 0.085, x2 = 0.45, y2 = 0.060, thickness = 0.050 },
-			{ type = "bar", x1 = 0.45, y1 = 0.060, x2 = 1.05, y2 = 0.085, thickness = 0.050 },
-			{ type = "ellipse", x = 0.73, y = 0.28, rx = 0.075, ry = 0.055 },
-			{ type = "ellipse", x = 0.22, y = 0.72, rx = 0.045, ry = 0.060 },
-			{ type = "bar", x1 = 0.47, y1 = 0.62, x2 = 0.47, y2 = 0.86, thickness = 0.032 },
+			{ type = "ellipse", x = 0.156, y = 0.190, rx = 0.097, ry = 0.043, rotation = -7.6 },
+			{ type = "ellipse", x = 0.140, y = 0.170, rx = 0.062, ry = 0.043, rotation = -14.0 },
+			{ type = "ellipse", x = 0.220, y = 0.200, rx = 0.078, ry = 0.043, rotation = 45.0 },
+			{ type = "ellipse", x = 0.300, y = 0.255, rx = 0.064, ry = 0.043, rotation = 20.6 },
+			{ type = "ellipse", x = 0.380, y = 0.245, rx = 0.068, ry = 0.043, rotation = -32.0 },
+			{ type = "ellipse", x = 0.460, y = 0.200, rx = 0.066, ry = 0.043, rotation = -26.6 },
+			{ type = "ellipse", x = 0.540, y = 0.205, rx = 0.068, ry = 0.043, rotation = 32.0 },
+			{ type = "ellipse", x = 0.620, y = 0.260, rx = 0.071, ry = 0.043, rotation = 36.9 },
+			{ type = "ellipse", x = 0.700, y = 0.250, rx = 0.078, ry = 0.043, rotation = -45.0 },
+			{ type = "ellipse", x = 0.780, y = 0.195, rx = 0.064, ry = 0.043, rotation = -20.6 },
+			{ type = "ellipse", x = 0.804, y = 0.210, rx = 0.140, ry = 0.043, rotation = 14.6 },
+			{ type = "ellipse", x = 0.056, y = 0.180, rx = 0.040, ry = 0.043, rotation = -7.6 },
+			{ type = "ellipse", x = 0.945, y = 0.210, rx = 0.036, ry = 0.043, rotation = 14.6 },
+			-- Deux lacs : l'un à l'est, l'autre au sud-ouest.
+			{ type = "ellipse", x = 0.800, y = 0.500, rx = 0.090, ry = 0.060, rotation = -15 },
+			{ type = "ellipse", x = 0.200, y = 0.780, rx = 0.050, ry = 0.040, rotation = 0 },
 		},
 		grassShapes = {
-			{ type = "ellipse", x = 0.33, y = 0.42, rx = 0.12, ry = 0.09 },
-			{ type = "ellipse", x = 0.78, y = 0.72, rx = 0.10, ry = 0.07 },
+			{ type = "ellipse", x = 0.300, y = 0.380, rx = 0.080, ry = 0.050, rotation = 0 },
+			{ type = "ellipse", x = 0.720, y = 0.740, rx = 0.100, ry = 0.070, rotation = 0 },
 		},
-		isWater = function(nx, ny)
-			if ny < 0.07 + 0.012 * math.sin(nx * 16) then
-				return true
-			end
-			if circle(nx, ny, 0.73, 0.28, 0.075, 0.055) then
-				return true
-			end
-			if circle(nx, ny, 0.22, 0.72, 0.045, 0.06) then
-				return true
-			end
-			if math.abs(nx - 0.47) < 0.012 and ny > 0.62 and ny < 0.86 then
-				return true
-			end
-			return false
-		end,
 	},
 	{
 		id = "tokyo",
@@ -202,33 +164,34 @@ local list = {
 		description = "Reliez les quartiers de Tokyo, la plus grande métropole du monde.",
 		header = Color3.fromHex("E9A7A0"),
 		accent = Color3.fromHex("D98A82"),
-		labels = {
-			{ text = "TOKYO", side = "right" },
-			{ text = "SHIBUYA", side = "left" },
-		},
 		previewRoads = {
 			{ 0.20, 0.22, 0.70, 0.22 },
 			{ 0.70, 0.22, 0.70, 0.60 },
 			{ 0.30, 0.46, 0.74, 0.46 },
 			{ 0.20, 0.22, 0.20, 0.52 },
 		},
+		-- Baie au sud-est, bordée d'une côte en diagonale, et une rivière
+		-- qui s'en échappe vers l'ouest.
 		waterShapes = {
-			{ type = "ellipse", x = 0.88, y = 0.90, rx = 0.26, ry = 0.22 },
-			{ type = "bar", x1 = 0.28, y1 = 0.83, x2 = 1.02, y2 = 0.18, thickness = 0.045 },
+			{ type = "ellipse", x = 0.595, y = 0.836, rx = 0.120, ry = 0.100, rotation = -26.6 },
+			{ type = "ellipse", x = 0.720, y = 0.840, rx = 0.098, ry = 0.100, rotation = -23.5 },
+			{ type = "ellipse", x = 0.835, y = 0.844, rx = 0.088, ry = 0.100, rotation = -33.7 },
+			{ type = "ellipse", x = 0.849, y = 0.811, rx = 0.080, ry = 0.100, rotation = -45.0 },
+			{ type = "ellipse", x = 0.834, y = 0.733, rx = 0.112, ry = 0.100, rotation = -43.5 },
+			-- Comble le coin sud-est : sans cela, un îlot de terre isolé reste.
+			{ type = "ellipse", x = 0.840, y = 0.860, rx = 0.100, ry = 0.080, rotation = 0 },
+			{ type = "ellipse", x = 0.640, y = 0.810, rx = 0.092, ry = 0.037, rotation = -105.9 },
+			{ type = "ellipse", x = 0.570, y = 0.720, rx = 0.073, ry = 0.037, rotation = -158.2 },
+			{ type = "ellipse", x = 0.460, y = 0.680, rx = 0.082, ry = 0.037, rotation = -161.6 },
+			{ type = "ellipse", x = 0.350, y = 0.640, rx = 0.073, ry = 0.037, rotation = -158.2 },
+			{ type = "ellipse", x = 0.250, y = 0.580, rx = 0.083, ry = 0.037, rotation = -141.3 },
+			{ type = "ellipse", x = 0.150, y = 0.500, rx = 0.083, ry = 0.037, rotation = -141.3 },
+			{ type = "ellipse", x = 0.154, y = 0.430, rx = 0.100, ry = 0.037, rotation = -158.2 },
 		},
 		grassShapes = {
-			{ type = "ellipse", x = 0.36, y = 0.28, rx = 0.10, ry = 0.07 },
-			{ type = "ellipse", x = 0.55, y = 0.70, rx = 0.09, ry = 0.06 },
+			{ type = "ellipse", x = 0.340, y = 0.280, rx = 0.100, ry = 0.060, rotation = -20 },
+			{ type = "ellipse", x = 0.620, y = 0.360, rx = 0.080, ry = 0.050, rotation = 0 },
 		},
-		isWater = function(nx, ny)
-			if circle(nx, ny, 0.88, 0.90, 0.26, 0.22) then
-				return true
-			end
-			if math.abs(0.9 * nx + ny - 1.08) < 0.022 and nx > 0.28 and ny > 0.15 then
-				return true
-			end
-			return false
-		end,
 	},
 	{
 		id = "dar_es_salam",
@@ -237,47 +200,32 @@ local list = {
 		description = "Développez votre réseau pour suivre la croissance rapide de Dar es Salaam.",
 		header = Color3.fromHex("B5E0CE"),
 		accent = Color3.fromHex("8FCBB4"),
-		labels = {
-			{ text = "DAR ES SALAAM", side = "right" },
-			{ text = "KIGAMBONI", side = "left" },
-		},
 		previewRoads = {
 			{ 0.14, 0.64, 0.58, 0.64 },
 			{ 0.58, 0.64, 0.58, 0.32 },
 			{ 0.30, 0.42, 0.76, 0.42 },
 			{ 0.58, 0.32, 0.82, 0.32 },
 		},
+		-- Côte orientale sinueuse, un bras de mer qui pénètre la ville et une lagune.
 		waterShapes = {
-			{ type = "rect", x = 0.82, y = -0.20, w = 0.25, h = 1.40, radius = 0.16 },
-			{ type = "circle", x = 0.84, y = 0.06, r = 0.060 },
-			{ type = "circle", x = 0.81, y = 0.18, r = 0.070 },
-			{ type = "circle", x = 0.84, y = 0.31, r = 0.060 },
-			{ type = "circle", x = 0.80, y = 0.44, r = 0.070 },
-			{ type = "circle", x = 0.84, y = 0.57, r = 0.060 },
-			{ type = "circle", x = 0.81, y = 0.70, r = 0.070 },
-			{ type = "circle", x = 0.84, y = 0.83, r = 0.060 },
-			{ type = "circle", x = 0.80, y = 0.94, r = 0.070 },
-			{ type = "ellipse", x = 0.62, y = 0.18, rx = 0.10, ry = 0.07 },
-			{ type = "bar", x1 = 0.45, y1 = 0.60, x2 = 0.72, y2 = 0.64, thickness = 0.032 },
-			{ type = "bar", x1 = 0.72, y1 = 0.64, x2 = 1.05, y2 = 0.62, thickness = 0.032 },
+			{ type = "ellipse", x = 0.850, y = 0.190, rx = 0.130, ry = 0.090, rotation = 95.7 },
+			{ type = "ellipse", x = 0.850, y = 0.190, rx = 0.130, ry = 0.090, rotation = 86.7 },
+			{ type = "ellipse", x = 0.850, y = 0.306, rx = 0.111, ry = 0.090, rotation = 93.8 },
+			{ type = "ellipse", x = 0.850, y = 0.456, rx = 0.111, ry = 0.090, rotation = 93.8 },
+			{ type = "ellipse", x = 0.850, y = 0.600, rx = 0.108, ry = 0.090, rotation = 90.0 },
+			{ type = "ellipse", x = 0.850, y = 0.747, rx = 0.109, ry = 0.090, rotation = 88.1 },
+			{ type = "ellipse", x = 0.850, y = 0.831, rx = 0.109, ry = 0.090, rotation = 86.2 },
+			{ type = "ellipse", x = 0.849, y = 0.835, rx = 0.106, ry = 0.090, rotation = 101.3 },
+			{ type = "ellipse", x = 0.790, y = 0.610, rx = 0.066, ry = 0.030, rotation = -168.7 },
+			{ type = "ellipse", x = 0.700, y = 0.630, rx = 0.065, ry = 0.030, rotation = 143.1 },
+			{ type = "ellipse", x = 0.630, y = 0.700, rx = 0.065, ry = 0.030, rotation = 126.9 },
+			{ type = "ellipse", x = 0.560, y = 0.770, rx = 0.065, ry = 0.030, rotation = 143.1 },
+			{ type = "ellipse", x = 0.660, y = 0.220, rx = 0.080, ry = 0.050, rotation = 30 },
 		},
 		grassShapes = {
-			{ type = "ellipse", x = 0.32, y = 0.28, rx = 0.12, ry = 0.08 },
-			{ type = "ellipse", x = 0.52, y = 0.76, rx = 0.10, ry = 0.07 },
+			{ type = "ellipse", x = 0.300, y = 0.300, rx = 0.100, ry = 0.060, rotation = 0 },
+			{ type = "ellipse", x = 0.340, y = 0.780, rx = 0.080, ry = 0.050, rotation = 20 },
 		},
-		isWater = function(nx, ny)
-			local coast = 0.87 - 0.03 * math.sin(ny * 8)
-			if nx > coast then
-				return true
-			end
-			if circle(nx, ny, 0.62, 0.18, 0.10, 0.07) then
-				return true
-			end
-			if math.abs(ny - (0.62 + 0.05 * math.sin(nx * 9))) < 0.016 and nx > 0.45 then
-				return true
-			end
-			return false
-		end,
 	},
 	{
 		id = "london",
@@ -286,53 +234,48 @@ local list = {
 		description = "Traversez la Tamise et redessinez les rues de la capitale britannique.",
 		header = Color3.fromHex("C9D6D9"),
 		accent = Color3.fromHex("A8B8C0"),
-		labels = {
-			{ text = "LONDRES", side = "right" },
-			{ text = "SOUTH BANK", side = "left" },
-		},
 		previewRoads = {
 			{ 0.20, 0.28, 0.80, 0.28 },
 			{ 0.50, 0.24, 0.50, 0.72 },
 			{ 0.25, 0.72, 0.75, 0.72 },
 			{ 0.25, 0.72, 0.25, 0.86 },
 		},
+		-- La Tamise serpente d'ouest en est et sépare la ville en deux rives.
 		waterShapes = {
-			{ type = "bar", x1 = -0.05, y1 = 0.52, x2 = 0.25, y2 = 0.62, thickness = 0.100 },
-			{ type = "bar", x1 = 0.25, y1 = 0.62, x2 = 0.50, y2 = 0.52, thickness = 0.100 },
-			{ type = "bar", x1 = 0.50, y1 = 0.52, x2 = 0.75, y2 = 0.42, thickness = 0.100 },
-			{ type = "bar", x1 = 0.75, y1 = 0.42, x2 = 1.05, y2 = 0.48, thickness = 0.100 },
-			{ type = "ellipse", x = 0.18, y = 0.62, rx = 0.045, ry = 0.035 },
+			{ type = "ellipse", x = 0.167, y = 0.590, rx = 0.112, ry = 0.044, rotation = -19.4 },
+			{ type = "ellipse", x = 0.180, y = 0.600, rx = 0.094, ry = 0.044, rotation = 33.7 },
+			{ type = "ellipse", x = 0.300, y = 0.670, rx = 0.089, ry = 0.044, rotation = 26.6 },
+			{ type = "ellipse", x = 0.430, y = 0.710, rx = 0.093, ry = 0.044, rotation = 8.1 },
+			{ type = "ellipse", x = 0.560, y = 0.690, rx = 0.089, ry = 0.044, rotation = -26.6 },
+			{ type = "ellipse", x = 0.680, y = 0.590, rx = 0.114, ry = 0.044, rotation = -49.4 },
+			{ type = "ellipse", x = 0.790, y = 0.470, rx = 0.093, ry = 0.044, rotation = -45.0 },
+			{ type = "ellipse", x = 0.877, y = 0.390, rx = 0.072, ry = 0.044, rotation = -36.9 },
+			{ type = "ellipse", x = 0.853, y = 0.350, rx = 0.088, ry = 0.044, rotation = -8.7 },
+			-- Les deux bouts de la Tamise atteignent les bords du plateau,
+			-- sinon les rives se rejoignent par le bord sans pont.
+			{ type = "ellipse", x = 0.056, y = 0.630, rx = 0.034, ry = 0.044, rotation = -19.4 },
+			{ type = "ellipse", x = 0.935, y = 0.355, rx = 0.045, ry = 0.044, rotation = -8.7 },
+			-- Petit étang dans le parc de l'ouest.
+			{ type = "ellipse", x = 0.160, y = 0.200, rx = 0.040, ry = 0.030, rotation = 0 },
 		},
 		grassShapes = {
-			{ type = "ellipse", x = 0.72, y = 0.72, rx = 0.12, ry = 0.08 },
-			{ type = "ellipse", x = 0.30, y = 0.28, rx = 0.09, ry = 0.06 },
+			{ type = "ellipse", x = 0.300, y = 0.300, rx = 0.090, ry = 0.060, rotation = 0 },
+			{ type = "ellipse", x = 0.740, y = 0.200, rx = 0.060, ry = 0.050, rotation = 0 },
+			{ type = "ellipse", x = 0.300, y = 0.840, rx = 0.090, ry = 0.050, rotation = 0 },
 		},
-		isWater = function(nx, ny)
-			local riverY = 0.52 + 0.10 * math.sin(nx * 5.0)
-			if math.abs(ny - riverY) < 0.05 then
-				return true
-			end
-			if circle(nx, ny, 0.18, 0.62, 0.045, 0.035) then
-				return true
-			end
-			return false
-		end,
 	},
 }
 
--- Couleurs communes : le papier crème et l'eau menthe restent identiques
--- d'une carte à l'autre, seuls les en-têtes et accents changent.
+-- Terrain uniforme sur toutes les cartes : seuls l'en-tête et l'accent
+-- (couleurs d'interface du menu) changent d'une ville à l'autre.
 for _, map in ipairs(list) do
-	map.land = map.land or C.Land
-	map.water = map.water or C.Water
-	map.waterEdge = map.waterEdge or C.WaterEdge
-	map.waterDeep = map.waterDeep or C.WaterDeep
-	map.grass = map.grass or C.Grass
-	map.mode = map.mode or "Classique"
-	map.labels = map.labels or {}
-	map.grassShapes = map.grassShapes or {}
+	map.land = C.Land
+	map.water = C.Water
+	map.waterEdge = C.WaterEdge
+	map.waterDeep = C.WaterDeep
+	map.grass = C.Park
 	map.dryShapes = map.dryShapes or {}
-	map.dryPatches = map.dryPatches or {}
+	map.grassShapes = map.grassShapes or {}
 end
 
 function Maps.all()
@@ -348,8 +291,7 @@ function Maps.getById(id)
 	return nil
 end
 
--- Teste un point normalisé contre une forme d'eau / d'herbe.
--- Les mêmes formes servent à l'aperçu du menu et au rendu 3D du terrain.
+-- Teste un point normalisé contre une forme (rect, cercle, ellipse, bar).
 local function pointInShape(shape, nx, ny)
 	if shape.type == "rect" then
 		return nx >= shape.x
@@ -382,6 +324,11 @@ local function pointInShape(shape, nx, ny)
 		local t = 0
 		if lengthSquared > 0 then
 			t = ((nx - x1) * dx + (ny - y1) * dy) / lengthSquared
+			-- Même règle que le rendu : avec flatStart, le bout x1 est coupé
+			-- droit, sans capuchon rond au-delà.
+			if shape.flatStart and t < 0 then
+				return false
+			end
 			t = math.clamp(t, 0, 1)
 		end
 		local px = x1 + dx * t
@@ -395,25 +342,8 @@ local function pointInShape(shape, nx, ny)
 	return false
 end
 
-function Maps.isWater(map, x, y)
-	local size = Config.Grid.Size
-	local nx = (x + 0.5) / size
-	local ny = (y + 0.5) / size
-
-	-- Les presqu'îles et raccords secs reprennent le dessus de l'eau.
-	-- Ils doivent donc être considérés comme de la terre pour les routes.
-	for _, shape in ipairs(map.dryShapes or {}) do
-		if pointInShape(shape, nx, ny) then
-			return false
-		end
-	end
-	for _, shape in ipairs(map.dryPatches or {}) do
-		if pointInShape(shape, nx, ny) then
-			return false
-		end
-	end
-
-	for _, shape in ipairs(map.waterShapes or {}) do
+local function anyShape(shapes, nx, ny)
+	for _, shape in ipairs(shapes) do
 		if pointInShape(shape, nx, ny) then
 			return true
 		end
@@ -421,16 +351,53 @@ function Maps.isWater(map, x, y)
 	return false
 end
 
+-- Règle unique de l'eau : un point est de l'eau s'il tombe dans une forme
+-- d'eau et hors de toute forme sèche (presqu'île).
+-- Une cellule est classée par son centre : une cellule dont le centre est
+-- sur la terre reste construisible, même si un de ses bords touche le rivage.
+function Maps.isWaterAt(map, nx, ny)
+	if anyShape(map.dryShapes, nx, ny) then
+		return false
+	end
+	return anyShape(map.waterShapes, nx, ny)
+end
+
+-- Cache par carte : chaque cellule n'est évaluée qu'une fois, au lieu de
+-- recalculer les ellipses tournées à chaque test de construction.
+local waterCells = setmetatable({}, { __mode = "k" })
+
+local function cellWaterRows(map)
+	local size = Config.Grid.Size
+	local cached = waterCells[map]
+	if cached and cached.size == size then
+		return cached.rows
+	end
+	local rows = {}
+	for y = 0, size - 1 do
+		local row = {}
+		for x = 0, size - 1 do
+			row[x] = Maps.isWaterAt(map, (x + 0.5) / size, (y + 0.5) / size)
+		end
+		rows[y] = row
+	end
+	waterCells[map] = { size = size, rows = rows }
+	return rows
+end
+
+function Maps.isWater(map, x, y)
+	local row = cellWaterRows(map)[y]
+	local cached = row and row[x]
+	if cached ~= nil then
+		return cached
+	end
+	-- Hors de la grille : même règle, sans cache.
+	local size = Config.Grid.Size
+	return Maps.isWaterAt(map, (x + 0.5) / size, (y + 0.5) / size)
+end
+
 function Maps.isGrass(map, x, y)
 	local size = Config.Grid.Size
-	local nx = (x + 0.5) / size
-	local ny = (y + 0.5) / size
-	for _, shape in ipairs(map.grassShapes or {}) do
-		if pointInShape(shape, nx, ny) then
-			return true
-		end
-	end
-	return false
+	return anyShape(map.grassShapes, (x + 0.5) / size, (y + 0.5) / size)
 end
 
 return Maps

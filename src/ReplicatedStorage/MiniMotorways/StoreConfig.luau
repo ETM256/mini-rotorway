@@ -32,10 +32,10 @@ StoreConfig.Spawn = {
 	MinBuildableNeighbors = 3,
 	MaxAttempts = 700,
 
-	-- Paliers de progression. untilTime = temps simulé écoulé depuis le début.
-	-- Le premier magasin est créé immédiatement ; ces valeurs règlent les
-	-- magasins suivants. Les derniers paliers seront utiles si MaxStores est
-	-- augmenté au-delà de 8.
+	-- Paliers de difficulté. untilTime = temps simulé de fin du palier.
+	-- Les valeurs d'un palier sont atteintes à son début ; entre deux
+	-- paliers, l'intervalle glisse linéairement vers le palier suivant.
+	-- Le dernier palier reste constant. Ordre croissant obligatoire.
 	Tiers = {
 		{ untilTime = 180, minInterval = 100, maxInterval = 120 },
 		{ untilTime = 360, minInterval = 75, maxInterval = 100 },
@@ -54,6 +54,13 @@ StoreConfig.Spawn = {
 	},
 }
 
+-- Diffusion vers le client (secondes réelles) : rafraîchissement rapide quand
+-- l'état change (compte à rebours), sinon une mise à jour lente suffit.
+StoreConfig.Sync = {
+	DirtyDelay = 0.2,
+	IdleDelay = 1.5,
+}
+
 StoreConfig.Demand = {
 	-- Capacités demandées : petit magasin 6, grand magasin 8.
 	SmallCapacity = 6,
@@ -64,6 +71,8 @@ StoreConfig.Demand = {
 	LargeInterval = 7.5,
 	FirstDelayMin = 5,
 	FirstDelayMax = 9,
+	-- Variation relative aléatoire appliquée à chaque intervalle (±10 %).
+	Jitter = 0.10,
 
 	-- La difficulté augmente avec le temps : les demandes arrivent plus vite.
 	RampDuration = 600,
@@ -88,7 +97,9 @@ StoreConfig.Evolution = {
 	Chance = 0.42,
 	MinDeliveries = 3,
 	MaxLargeStores = 6,
-	AnimationDuration = 0.55,
+	AnimationDuration = Config.Style.Motion.Evolution,
+	-- Variation relative de l'intervalle entre deux contrôles d'évolution.
+	CheckJitter = 0.30,
 }
 
 StoreConfig.Houses = {
@@ -98,32 +109,53 @@ StoreConfig.Houses = {
 	MaxHouses = 16,
 	SpawnInterval = 18,
 	FirstSpawnDelay = 26,
+	-- Aléa ajouté au délai de la première sortie d'une nouvelle maison.
+	FirstTripJitter = 4,
 
 	MinDistanceFromStore = 4,
 	MaxDistanceFromStore = 9,
+	-- Groupes : une nouvelle maison se pose près d'une maison déjà présente
+	-- (même magasin) avec cette probabilité, sinon autour du magasin.
+	ClusterChance = 0.6,
+	ClusterMinDistance = 2.6,
+	ClusterMaxDistance = 3.6,
+	MaxAttempts = 500,
 	MinDistanceFromBuilding = 2.6,
 	MinBuildableNeighbors = 2,
 }
 
 StoreConfig.Visual = {
-	SmallSize = 6.4,
-	LargeSize = 8.4,
-	SpawnAnimationDuration = 0.4,
+	-- Emprise dessinée des magasins (BuildingModels), en studs : même source que
+	-- les bâtiments, pour que le décalage des pins colle au bâtiment.
+	SmallSize = Config.Dimensions.Building.SmallStore * Config.Grid.TileSize,
+	LargeSize = Config.Dimensions.Building.LargeStore * Config.Grid.TileSize,
+	SpawnAnimationDuration = Config.Style.Motion.Spawn,
 	EvolutionStartScale = 0.62,
-	EvolutionDuration = 0.55,
+	EvolutionDuration = Config.Style.Motion.Evolution,
 
-	-- Pins de demande côté client (BillboardGui).
-	PinRowWidth = 196,
-	PinRowHeight = 64,
-	PinSize = 18,
+	-- Pins de demande côté client (BillboardGui). Les tailles sont en pixels
+	-- écran : elles restent lisibles au dézoom sans grossir au zoom avant.
+	PinRowWidth = 64,
+	PinRowHeight = 96,
+	PinSize = Config.Dimensions.Pin.Size,
 	PinGap = 4,
-	-- Distance en studs au-dessus du magasin, vers le haut de l'écran
-	-- (la caméra du jeu regarde vers le bas : l'axe écran-haut est world -Z).
-	PinHeightSmall = 6.6,
-	PinHeightLarge = 7.8,
-	PinMaxDistance = 420,
-	PinWarningWidth = 30,
-	PinWarningHeight = 20,
+	PinsPerRow = 4,
+	-- Décalage entre deux pins d'une même vague d'apparition (secondes).
+	PinStagger = 0.05,
+	PinAppearDuration = 0.24,
+	PinRemoveDuration = 0.16,
+	PinStrokeTransparency = 0.4,
+	-- Écart en studs entre le bord du magasin et le bas des pins ; le décalage
+	-- de caméra vers le haut de l'écran (world -Z) est calculé à partir de la
+	-- taille du magasin, pour rester collé au bâtiment quand il évolue.
+	PinLift = 1.4,
+	PinEvolutionPop = 1.16,
+	-- Les pins ne sont jamais masqués par la distance : la caméra reste proche.
+	PinMaxDistance = 2000,
+	PinWarningWidth = 28,
+	PinWarningHeight = 12,
+	PinWarningGap = 3,
+	PinWarningTextSize = 10,
 }
 
 return StoreConfig
