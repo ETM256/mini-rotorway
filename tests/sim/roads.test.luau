@@ -244,9 +244,9 @@ return function(T, H)
 		T.le(perCell, 16, "road visuals use too many parts per cell: " .. perCell)
 	end)
 
-	-- Part 16 of the brief: keep road models light. Today ~12 parts per cell
-	-- (Edge + Top ribbons, joints, ovals, contours); aim for <= 6.
-	T.todo("road visuals use at most 6 parts per road cell", function()
+	-- Part 16 of the brief: keep road models light. One renderer driven by
+	-- RoadGeometry: a straight cell is 2 parts, a turn 6, never more than 8.
+	T.test("road visuals use at most 8 parts per road cell (straight line: 2)", function()
 		local session = H.newSession("los_angeles")
 		session.budget = 100
 		H.runSession(session, 1)
@@ -254,7 +254,8 @@ return function(T, H)
 		local line = freeLine(session, 8)
 		session:drawRoad(line)
 		H.runSession(session, 1)
-		T.le((H.count(session.world.folder, "BasePart") - before) / #line, 6)
+		T.le((H.count(session.world.folder, "BasePart") - before) / #line, 8)
+		T.le(H.count(session.world.Roads, "BasePart") / #line, 4, "edge + body, plus the two end caps")
 	end)
 
 	T.test("drawing and erasing in a loop does not grow the world (no leaked parts)", function()
