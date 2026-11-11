@@ -59,12 +59,16 @@ return function(T, H)
 		end
 	end)
 
-	-- Today a building is ~50 BasePart (rounded cards made of two bars + four
-	-- cylinders per layer) and a water map ~450 parts.
-	T.todo("a building model uses at most 25 parts", function()
+	-- Budget per building model: a house is ~10 BasePart, a small store ~14.
+	T.test("a building model uses at most 14 parts (house) and 20 parts (store)", function()
 		local session = H.newSession("los_angeles")
-		local count = H.count(session.world.Buildings, "BasePart") / #session.buildingList
-		T.le(count, 25)
+		T.ok(#session.houses > 0 and #session.destinations > 0, "need a house and a store")
+		for _, house in ipairs(session.houses) do
+			T.le(H.count(house.model, "BasePart"), 14, house.key .. " uses too many parts")
+		end
+		for _, store in ipairs(session.destinations) do
+			T.le(H.count(store.model, "BasePart"), 20, store.key .. " uses too many parts")
+		end
 	end)
 
 	T.test("static terrain uses at most 300 parts", function()

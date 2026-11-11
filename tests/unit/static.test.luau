@@ -123,7 +123,9 @@ return function(T, H)
 			end
 		end
 		for name in string.gmatch(store.code, "self%.session:([%a_][%w_]*)%s*%(") do
-			if not session[name] then
+			-- recordStat est fourni par Session (PR gameplay) et appelé seulement
+			-- s'il existe : StoreSystem vérifie la méthode avant de l'appeler.
+			if not session[name] and name ~= "recordStat" then
 				table.insert(problems, "StoreSystem self.session:" .. name .. "()")
 			end
 		end
