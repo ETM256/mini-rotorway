@@ -66,6 +66,9 @@ RoadConfig.Input = {
 	-- Échap peut donc annuler sans avoir consommé de route.
 	CommitOnRelease = true,
 	MaxCellsPerRequest = 512,
+	-- Garde-fou d'un seul tracé orthogonal (RoadNetwork.manhattanPath) :
+	-- distinct de la taille d'un lot, qui découpe un long geste en requêtes.
+	MaxPathSteps = 512,
 	-- Hystérésis : en dessous de ce seuil, on conserve le dernier axe.
 	DragAxisThreshold = 0.35,
 	-- Mouvement minimal (pixels écran) avant de décider d'un axe dominant.
