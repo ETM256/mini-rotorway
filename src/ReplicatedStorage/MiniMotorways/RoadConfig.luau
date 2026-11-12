@@ -12,7 +12,7 @@ local Config = require(script.Parent.Config)
 
 local RoadConfig = {}
 
-RoadConfig.Version = "1.0.0"
+RoadConfig.Version = "1.1.0"
 
 -- true : autorise les cases reliées par un coin (comportement historique).
 -- false : réseau orthogonal uniquement, virages à 90° et intersections
@@ -62,9 +62,8 @@ RoadConfig.Layers = {
 }
 
 RoadConfig.Input = {
-	-- La construction est validée au relâchement. L'aperçu reste local :
-	-- Échap peut donc annuler sans avoir consommé de route.
-	CommitOnRelease = true,
+	-- La construction est validée au relâchement (InputController). L'aperçu
+	-- reste local : Échap peut donc annuler sans avoir consommé de route.
 	MaxCellsPerRequest = 512,
 	-- Garde-fou d'un seul tracé orthogonal (RoadNetwork.manhattanPath) :
 	-- distinct de la taille d'un lot, qui découpe un long geste en requêtes.
@@ -99,24 +98,52 @@ RoadConfig.Traffic = {
 	Braking = 6,
 	-- Une intersection (3 ou 4 voisins) est réservée à une voiture à la fois.
 	IntersectionReservation = true,
-	ReservationReleaseTime = 8,
 }
 
--- Emplacements prévus pour les futures infrastructures. Les ponts existent
--- déjà ; les autoroutes sont volontairement désactivées tant que leur
--- logique de trajet dédiée n'est pas branchée.
+-- Autoroutes : volontairement désactivées tant que leur logique de trajet
+-- dédiée n'est pas branchée. Les ponts et les ronds-points sont des cartes de
+-- Config.Rewards, pas un réglage ici.
 RoadConfig.Infrastructure = {
-	Bridges = {
-		Enabled = true,
-		CostsRoadPiece = true,
-		SpecialResource = "bridges",
-	},
 	Highways = {
 		Enabled = false,
-		CostsRoadPiece = false,
-		MaxEntrances = 2,
-		SpeedMultiplier = 1.8,
 	},
+}
+
+-- Voitures : tailles et trajectoires, en fraction d'une case sauf mention.
+RoadConfig.Vehicle = {
+	LengthTiles = Config.Dimensions.Car.Length,
+	WidthTiles = Config.Dimensions.Car.Width,
+	-- Hauteur de carrosserie, en studs (et non en fraction de case).
+	Height = 0.4,
+	-- Voie de droite : décalage latéral par rapport à l'axe de la route. Deux
+	-- voies opposées restent séparées d'une voiture entière (2 x décalage) et
+	-- la voiture reste dans la chaussée (demi-route - demi-voiture = 0.145).
+	LaneOffsetTiles = 0.14,
+	-- Virage : l'arc commence à cette distance du centre de la case.
+	CornerCutTiles = 0.45,
+	-- Produit scalaire au-dessous duquel l'enchaînement est un virage.
+	TurnDot = 0.98,
+	-- Vitesse de rotation maximale du cap (radians par seconde).
+	TurnRate = 5,
+	-- Freinage pour s'arrêter avant une intersection occupée, en fraction de
+	-- Traffic.Braking : plus doux qu'un arrêt net, donc sans à-coup visible.
+	StopBrakeFactor = 0.5,
+	CurveSamples = 8,
+	-- Distance d'observation des voitures qui précèdent sur le trajet.
+	LookaheadTiles = 2.5,
+	-- Zone de ralentissement progressif avant la distance de sécurité (studs).
+	FollowBand = 2.4,
+	-- Pas de simulation maximal (secondes) : un dt de 0.3 s est découpé.
+	MaxStep = 0.1,
+	-- Une voiture qui attend une case depuis ce délai (secondes) cherche si
+	-- l'attente forme une boucle : si oui, une seule voiture de la boucle passe.
+	DeadlockCheckTime = 1,
+	-- Écart de cap (radians) au-delà duquel la voiture n'avance plus : elle
+	-- pivote d'abord sur sa place après un demi-tour, au lieu de balayer la route.
+	AlignAngle = 0.8,
+	-- Dans un virage la voiture se rapproche de l'axe de la route (fraction du
+	-- décalage de voie, au milieu de l'arc) : sa queue ne déborde pas du bord.
+	CurveLanePull = 0.2,
 }
 
 return RoadConfig

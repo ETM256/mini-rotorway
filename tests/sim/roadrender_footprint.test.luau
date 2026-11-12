@@ -51,19 +51,13 @@ return function(T, H)
 	end
 
 	local function newNetworkSession(cells)
+		local session = H.newSession("los_angeles")
+		session.budget = 400
 		local w, h = 0, 0
 		for _, cell in ipairs(cells) do
 			w, h = math.max(w, cell[1] + 1), math.max(h, cell[2] + 1)
 		end
-		local session, ox, oy
-		for _, mapId in ipairs({ "los_angeles", "tokyo", "beijing", "dubai", "london", "dar_es_salaam" }) do
-			session = H.newSession(mapId)
-			session.budget = 400
-			ox, oy = freeArea(session, w, h)
-			if ox then
-				break
-			end
-		end
+		local ox, oy = freeArea(session, w, h)
 		T.ok(ox, "a free dry area of " .. w .. "x" .. h)
 		local absolute = {}
 		for _, cell in ipairs(cells) do

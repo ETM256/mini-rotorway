@@ -55,7 +55,7 @@ return function(T, H)
 		T.le(V.EdgeWidth, 1)
 	end)
 
-	T.todo("RoadConfig no longer carries the retired, unread keys (needs core PR: RoadConfig cleanup)", function()
+	T.test("RoadConfig no longer carries the retired, unread keys", function()
 		local R = H.load("RoadConfig")
 		for _, key in ipairs({ "ContourWidth", "RibbonEdgeWidth", "RibbonTopWidth" }) do
 			T.eq(R.Visual[key], nil, key)
@@ -64,14 +64,14 @@ return function(T, H)
 		T.eq(R.Vehicle.ReservationBackoff, nil, "ReservationBackoff")
 	end)
 
-	T.todo("vehicles: sizes follow Config.Dimensions.Car (needs traffic PR: RoadConfig.Vehicle)", function()
+	T.test("vehicles: sizes follow Config.Dimensions.Car", function()
 		local Config = H.load("Config")
 		local vehicle = H.load("RoadConfig").Vehicle
 		near(vehicle.LengthTiles, Config.Dimensions.Car.Length, "LengthTiles")
 		near(vehicle.WidthTiles, Config.Dimensions.Car.Width, "WidthTiles")
 	end)
 
-	T.todo("vehicles: lanes keep cars inside the road and opposite lanes apart (needs traffic PR: RoadConfig.Vehicle)", function()
+	T.test("vehicles: lanes keep cars inside the road and opposite lanes apart", function()
 		local Config = H.load("Config")
 		local vehicle = H.load("RoadConfig").Vehicle
 		local halfRoad = Config.Dimensions.Road.Width * 0.5

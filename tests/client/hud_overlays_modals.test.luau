@@ -355,11 +355,9 @@ return function(T, H)
 	T.test("the circulation reward gets its own card and keeps its title", function()
 		local hud, gui = newHud({})
 		started(hud)
-		-- Option construite ici : la récompense « circulation » de Config.Rewards
-		-- arrive avec la PR du gameplay, l'interface la gère déjà via trafficFactor.
-		local traffic = { id = "traffic", kind = "roads", amount = 20, roads = 20, trafficFactor = 0.93, title = "Circulation fluide", description = "Les voitures gardent moins de distance." }
-		hud:showWeekChoice({ week = 3, options = { { id = "roads", kind = "roads", amount = 30, title = "+30 routes", description = "Un lot de routes." }, traffic } })
-		T.ok(hasText(gui, traffic.title), "traffic reward title")
+		local Config = H.load("Config")
+		hud:showWeekChoice({ week = 3, options = { Config.Rewards.Roads, Config.Rewards.Traffic } })
+		T.ok(hasText(gui, Config.Rewards.Traffic.title), "traffic reward title")
 		T.ok(hasText(gui, "+20 routes"), "the resource amount is shown")
 		T.eq(#choiceHits(gui), 2)
 	end)

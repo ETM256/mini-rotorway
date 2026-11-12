@@ -3,8 +3,8 @@
 Un harnais qui exécute le vrai code de `src/` dans le CLI `luau`, sans Roblox :
 un faux monde (Instance, services, RemoteEvent, tweens, caméra, entrées) permet
 de lancer le serveur (`Bootstrap` + `Session`) et le client (`Main`, HUD, lobby,
-caméra) ensemble et de vérifier le jeu de bout en bout. Environ 230 tests,
-~6 s.
+caméra) ensemble et de vérifier le jeu de bout en bout. Environ 980 tests,
+~50 s.
 
 ```bash
 bash tests/run.sh                  # tout ; n'affiche que les échecs + la ligne finale
@@ -83,6 +83,7 @@ qu'il passe, il **échoue** pour demander de le convertir en `T.test`.
 | `H.fireHeartbeat(dt)` | une frame complète de durée `dt` |
 | `H.flush(s)` | tâches planifiées seulement, sans événements de frame |
 | `H.input.mouseMove/mouseDown/mouseUp(x, y, bouton)`, `.wheel(±1)`, `.key("P", true)` | entrées utilisateur (coordonnées d'écran) |
+| `H.input.touchBegin/touchMove/touchEnd(id, x, y)` | doigts (écran tactile) : `id` identifie le doigt, `touchMove`/`touchEnd` exigent un doigt posé ; mêmes signaux `InputBegan/InputChanged/InputEnded` que la souris |
 | `H.setViewport(w, h)` | résolution (déclenche `AbsoluteSize` / `ViewportSize`) |
 | `H.click(bouton)` | `Activated` puis `MouseButton1Click` |
 | `H.find(racine, {class=, name=, text=})` | recherche de descendants |
@@ -118,12 +119,14 @@ qu'il passe, il **échoue** pour demander de le convertir en `T.test`.
   et consorts ne placent rien (`AbsolutePosition` est indicative sous un layout :
   voir `H.isLayoutManaged`).
 - Pas d'inset de barre supérieure : `ScreenPointToRay` == `ViewportPointToRay`.
-- `Workspace:Raycast`, `UserInputService` tactile et autres API non utilisées
-  par le jeu ne sont pas implémentées : appel = erreur explicite
+- `Workspace:Raycast` et autres API non utilisées par le jeu ne sont pas
+  implémentées (les signaux tactiles passent par `H.input.touch*`) : appel = erreur explicite
   « valid Roblox method but is not implemented by the harness ». Les ajouter
   dans `tests/harness/classes.luau` (`I.implement(classe, { methods, getters,
   setters, defaults })`).
 - `task.wait` appelé directement dans un test avance l'horloge virtuelle ;
   `Signal:Wait()` / `WaitForChild` sans enfant exigent une tâche (`task.spawn`),
   sinon erreur « would block ».
-- Le temps réel (`os.clock`) n'est pas virtualisé ; `tick()` et `time()` le sont.
+- `tick()`, `time()` et `os.clock()` sont virtualisés (horloge du scheduler) ; le
+  temps CPU réel est `H.cpuClock()`, utilisé par les tests de performance.
+  `H.flush(s)` avance cette horloge (anti double-clic) sans événements de frame.

@@ -177,7 +177,7 @@ return function(T, H)
 		T.eq(session.roundaboutsLeft, 2, "no roundabout on a bare cell")
 	end)
 
-	T.todo("recordStat receives roadsBuilt and roadsErased with the exact counts (needs Session:recordStat: core PR)", function()
+	T.test("recordStat receives roadsBuilt and roadsErased with the exact counts", function()
 		local session = H.newSession("los_angeles")
 		local log = {}
 		session.recordStat = function(_, name, amount)

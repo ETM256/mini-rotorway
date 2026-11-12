@@ -76,6 +76,9 @@ return function(Session)
 		self:rebuildRoadTopology()
 		self:updateBuildingConnections()
 		self:refreshCarPaths()
+		if self.recordStat then
+			self:recordStat(statName, count)
+		end
 		self:sendState()
 		self:sendRoadState()
 	end

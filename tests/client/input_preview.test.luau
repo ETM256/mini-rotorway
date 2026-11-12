@@ -1,7 +1,4 @@
 return function(T, H)
-	-- Transparences de la grille posées par WorldBuilder (PR cartes) sur le dossier Grid.
-	local GRID_BASE, GRID_ACTIVE = 0.72, 0.35
-
 	-- Aperçu, visée, grille et cycle de vie d'InputController (sans serveur).
 
 	local origin = Vector3.new(0, 0, 0)
@@ -272,6 +269,7 @@ return function(T, H)
 	end)
 
 	T.test("the grid is raised while building and restored on release", function()
+		local Config = H.load("Config")
 		local worlds = Instance.new("Folder")
 		worlds.Name = "MMWorlds"
 		worlds.Parent = workspace
@@ -280,30 +278,30 @@ return function(T, H)
 		city.Parent = worlds
 		local grid = Instance.new("Folder")
 		grid.Name = "Grid"
-		grid:SetAttribute("BaseTransparency", GRID_BASE)
-		grid:SetAttribute("ActiveTransparency", GRID_ACTIVE)
+		grid:SetAttribute("BaseTransparency", Config.Terrain.GridBaseTransparency)
+		grid:SetAttribute("ActiveTransparency", Config.Terrain.GridActiveTransparency)
 		grid.Parent = city
 		local line = Instance.new("Part")
 		line.Name = "GridV"
-		line.Transparency = GRID_BASE
+		line.Transparency = Config.Terrain.GridBaseTransparency
 		line.Parent = grid
 
 		local input = setup()
-		T.near(line.Transparency, GRID_ACTIVE, 1e-6, "build tool: grid raised")
+		T.near(line.Transparency, Config.Terrain.GridActiveTransparency, 1e-6, "build tool: grid raised")
 
 		H.input.key("Four", true)
 		H.input.key("Four", false)
-		T.near(line.Transparency, GRID_BASE, 1e-6, "camera tool: grid discreet")
+		T.near(line.Transparency, Config.Terrain.GridBaseTransparency, 1e-6, "camera tool: grid discreet")
 
 		H.input.key("Two", true)
 		H.input.key("Two", false)
 		pressCell(3, 3)
-		T.near(line.Transparency, GRID_ACTIVE, 1e-6, "erase drag: grid raised")
+		T.near(line.Transparency, Config.Terrain.GridActiveTransparency, 1e-6, "erase drag: grid raised")
 		releaseCell(3, 3)
-		T.near(line.Transparency, GRID_BASE, 1e-6, "erase tool idle: grid discreet again")
+		T.near(line.Transparency, Config.Terrain.GridBaseTransparency, 1e-6, "erase tool idle: grid discreet again")
 
 		input:destroy()
-		T.near(line.Transparency, GRID_BASE, 1e-6, "destroy restores the base look")
+		T.near(line.Transparency, Config.Terrain.GridBaseTransparency, 1e-6, "destroy restores the base look")
 	end)
 
 	T.test("without a grid folder yet, the controller still works", function()
@@ -318,6 +316,7 @@ return function(T, H)
 	end)
 
 	T.test("a grid that appears after the world is set is raised on the next hover tick", function()
+		local Config = H.load("Config")
 		local RoadConfig = H.load("RoadConfig")
 		setup()
 		local worlds = Instance.new("Folder")
@@ -328,16 +327,16 @@ return function(T, H)
 		city.Parent = worlds
 		local grid = Instance.new("Folder")
 		grid.Name = "Grid"
-		grid:SetAttribute("BaseTransparency", GRID_BASE)
-		grid:SetAttribute("ActiveTransparency", GRID_ACTIVE)
+		grid:SetAttribute("BaseTransparency", Config.Terrain.GridBaseTransparency)
+		grid:SetAttribute("ActiveTransparency", Config.Terrain.GridActiveTransparency)
 		grid.Parent = city
 		local line = Instance.new("Part")
 		line.Name = "GridV"
-		line.Transparency = GRID_BASE
+		line.Transparency = Config.Terrain.GridBaseTransparency
 		line.Parent = grid
 
 		-- Le rafraîchissement périodique suffit : aucun geste n'est nécessaire.
 		H.advance(RoadConfig.Input.HoverRefresh + 0.01, { frames = true })
-		T.near(line.Transparency, GRID_ACTIVE, 1e-6, "build tool: raised on the tick")
+		T.near(line.Transparency, Config.Terrain.GridActiveTransparency, 1e-6, "build tool: raised on the tick")
 	end)
 end

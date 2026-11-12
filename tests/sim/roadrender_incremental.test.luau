@@ -256,7 +256,8 @@ return function(T, H)
 			end
 		end
 		checkConsistent(session, "final")
-		T.gt(countKeys(session.roads), 0, "the run really built roads")
+		T.gt(session.stats.roadsBuilt, 0, "the run really built roads")
+		T.gt(session.stats.roadsErased, 0, "and erased some")
 	end)
 
 	T.test("a roundabout draws three parts, is removed with its road, and gives its piece back", function()
@@ -300,15 +301,15 @@ return function(T, H)
 		end)
 	end)
 
-	T.test("destroying a session clears the road render state", function()
+	T.test("restarting a session clears the road render state", function()
 		local session = H.newSession("los_angeles")
 		session.budget = 400
 		session:drawRoad(dryCells(session, 30))
-		T.gt(countKeys(session.roadParts), 0, "the render state is filled before the destroy")
-		session:destroy()
+		session:start()
 		T.eq(countKeys(session.roadParts), 0)
-		T.eq(countKeys(session.roadSignatures), 0)
+		T.eq(roadPartCount(session), 0)
 		T.eq(next(session.roadDirty), nil)
-		T.eq(countKeys(session.tweens), 0, "no tween survives")
+		session:drawRoad(dryCells(session, 5))
+		checkConsistent(session, "after restart")
 	end)
 end

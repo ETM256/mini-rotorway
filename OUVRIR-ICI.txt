@@ -1,4 +1,4 @@
-MINI ROTORWAY - PROTOTYPE ROBLOX (VERSION 1.3.0)
+MINI ROTORWAY - PROTOTYPE ROBLOX (VERSION 1.7.0)
 =================================================
 
 1. Si Roblox Studio a déjà le fichier ouvert, ferme-le sans enregistrer.
@@ -30,7 +30,9 @@ Pour modifier le projet :
 - Les sources sont dans le dossier src/
 - Le mapping Rojo est dans default.project.json
 - Pour reconstruire le .rbxlx :
-  powershell -ExecutionPolicy Bypass -File tools/build.ps1
+  node tools/build-rbxlx.js        (sans Rojo)
+  powershell -ExecutionPolicy Bypass -File tools/build.ps1   (avec Rojo)
+- Pour lancer les tests (Luau installé) : bash tests/run.sh
 
 Attention : "Mini Motorways" est une marque de Dinosaur Polo Club.
 Ce projet est un prototype personnel. Renomme le jeu avant

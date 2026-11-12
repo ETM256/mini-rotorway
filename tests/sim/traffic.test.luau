@@ -61,7 +61,7 @@ return function(T, H)
 	-- Brief, part 8: vehicles leave houses to reach compatible stores *by the
 	-- road network*. Today a car is spawned (and parks) at an unconnected house
 	-- until its claim times out.
-	T.todo("no car is spawned for a house that is not connected to any store", function()
+	T.test("no car is spawned for a house that is not connected to any store", function()
 		local session = H.newSession("los_angeles")
 		local spawned = 0
 		stepRun(session, 60, 0.1, function(s)
@@ -124,7 +124,7 @@ return function(T, H)
 
 	-- Part 8 of the brief: no sudden moves. Cars currently speed up to ~13.6
 	-- studs/s in corners (nominal 9).
-	T.todo("car speed stays within 15% of the nominal speed, corners included", function()
+	T.test("car speed stays within 15% of the nominal speed, corners included", function()
 		local Config = H.load("Config")
 		local session = connectedGame()
 		local previous, maxStep = {}, 0
@@ -153,10 +153,77 @@ return function(T, H)
 		T.ge(minDistance, 1.0, "two cars overlap (distance " .. minDistance .. ")")
 	end)
 
-	-- La mesure mélange les voitures de sens opposé : la distance entre deux
-	-- voies voisines passe sous la distance de sécurité sans que ce soit un
-	-- défaut. Elle est réécrite avec la PR circulation (écart dans le même sens).
-	T.skipTest("cars keep at least 75% of Config.Traffic.CarSpacing from each other", "the metric mixes opposite lanes: rewritten in the traffic PR")
+	-- Espacement entre voitures : la métrique « toutes paires » mélangerait les
+	-- deux sens de circulation (voies opposées : 1,2 à 1,7 stud). On mesure donc
+	-- la distance entre deux voitures de la même voie orientée, dans une
+	-- situation qui les rapproche : la première s'arrête au bout de la route, la
+	-- seconde la rejoint.
+	local function followerDistance(multiplier)
+		local Config = H.load("Config")
+		local Grid = H.load("Grid")
+		local Maps = H.load("Maps")
+		local session, row, startX = nil, nil, nil
+		for _, map in ipairs(Maps.all()) do
+			H.reset()
+			session = H.newSession(map.id)
+			for y = 2, session.size - 3 do
+				for x = 1, session.size - 10 do
+					local clear = true
+					for dx = -1, 8 do
+						for dy = -1, 1 do
+							local key = Grid.key(x + dx, y + dy)
+							clear = clear and not session.buildings[key] and not Maps.isWater(session.map, x + dx, y + dy)
+						end
+					end
+					if clear and not row then
+						row, startX = y, x
+					end
+				end
+			end
+			if row then
+				break
+			end
+		end
+		session.storeSystem.spawnClock = 1e9
+		session.storeSystem.houseClock = 1e9
+		session.upgrades.traffic = multiplier
+		session.budget = 100
+		T.ok(row ~= nil, "a free straight stretch is needed")
+		local cells = {}
+		local keys = {}
+		for dx = 0, 7 do
+			cells[#cells + 1] = { startX + dx, row }
+			keys[#keys + 1] = Grid.key(startX + dx, row)
+		end
+		session:drawRoad(cells)
+		local function spawn()
+			local house = { x = startX - 3, y = row, colorIndex = 1 }
+			local dest = { x = startX + 8, y = row, colorIndex = 1 }
+			return session:createCar(house, dest, nil, keys)
+		end
+		local leader = spawn()
+		stepRun(session, 1.5, 0.1)
+		-- La première voiture n'est plus mise à jour : elle reste figée sur sa voie
+		-- (comme une voiture à l'arrêt) ; la seconde la rejoint.
+		table.remove(session.cars, 1)
+		local follower = spawn()
+		stepRun(session, 30, 0.1)
+		T.le(follower.speedFactor, 0.25, "the follower must have stopped behind the leader")
+		local measured = (leader.pos - follower.pos).Magnitude
+		return measured, Config.Traffic.CarSpacing
+	end
+
+	T.test("cars on the same lane keep at least 75% of CarSpacing from each other", function()
+		local distance, spacing = followerDistance(1)
+		T.ge(distance, spacing * 0.75, "two cars on one lane are " .. distance .. " studs apart")
+	end)
+
+	T.test("the circulation upgrade lets cars follow closer, still above 75% of the shortened spacing", function()
+		local normal, spacing = followerDistance(1)
+		local closer = followerDistance(0.6)
+		T.lt(closer, normal, "a shorter safety distance must bring the follower closer")
+		T.ge(closer, spacing * 0.6 * 0.75, "the follower must still keep its shortened distance")
+	end)
 
 	T.test("car models use the colour of their house", function()
 		local Config = H.load("Config")

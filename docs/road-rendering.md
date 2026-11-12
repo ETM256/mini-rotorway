@@ -100,8 +100,11 @@ seule couleur ; deux couches ne sont jamais coplanaires (écart d'au moins
 | `RoundaboutIsland` | `RoundaboutIsland` | 0.355 | `Config.Colors.White` |
 
 Le décor (`WorldBuilder`) reste dessous : herbe 0.015, grille 0.035 à 0.045,
-arbres 0.075, côte et eau 0.10 à 0.12, parcs secs 0.16 à 0.18. Les bâtiments et
-les voitures sont posés au-dessus des routes.
+arbres 0.075, côte et eau 0.10 à 0.12, parcs secs 0.16 à 0.18. Les bâtiments
+(`BuildingModels`) sont posés au-dessus des routes (ombre à partir de 0.38) et
+les voitures (`CarModel`) au-dessus des bâtiments. L'ombre d'une voiture est
+posée au-dessus de l'anneau des ronds-points (0.335) pour rester visible ;
+elle disparaît sous le tablier d'un pont.
 
 ### Cycle de rendu
 
@@ -179,8 +182,8 @@ le ruban lissé est remplacé par `RoadRenderer`.
   une soustraction de formes, que le jeu de pièces ne permet pas.
 - Les pièces de type `quarter` ne sont pas produites : le coin arrondi est un
   disque dont les trois autres quarts tombent dans la surface.
-- `Config.Dimensions.Road.Contour` est défini mais pas utilisé : un anneau
-  intermédiaire serait une couche de plus, générée par la même fonction.
+- `RoadConfig.Visual.ContourWidth` n'est pas utilisé. Un anneau intermédiaire
+  serait une couche de plus, générée par la même fonction.
 - Le module charge `RoadConfig`, donc `Config`, qui utilise `Color3.fromHex` :
   il ne tourne pas tel quel hors Roblox (il tourne dans le harnais de test).
 
