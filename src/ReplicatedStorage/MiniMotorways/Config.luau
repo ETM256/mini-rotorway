@@ -41,6 +41,20 @@ Config.Camera = {
 	FOV = 20,
 	Fit = 1.18,
 	BackRatio = 0.035,
+	-- Zoom : la molette ajoute ZoomStep par cran ; le zoom glisse vers sa cible
+	-- à ZoomSmoothing (1/s), indépendamment de la fréquence d'images.
+	ZoomMin = 1,
+	ZoomMax = 2.8,
+	ZoomStep = 0.14,
+	ZoomSmoothing = 12,
+	-- Déplacement : le centre de vue peut dépasser le bord de la carte de cette
+	-- fraction de l'écart carte / vue (0 = la vue reste entièrement sur la carte).
+	PanOverscroll = 0.5,
+	-- Arrivée sur la carte : la caméra descend depuis IntroZoomOut fois plus loin.
+	IntroSeconds = 0.6,
+	IntroZoomOut = 1.4,
+	LobbyHeight = 400,
+	LobbyFOV = 60,
 }
 
 -- Budget de départ et limites. Les gains hebdomadaires réels sont décrits
@@ -116,6 +130,17 @@ Config.Traffic = {
 	SatisfactionMax = 100,
 }
 
+-- Style d'interface partagé : arrondis, contours et durées d'animation.
+Config.Style = {
+	-- Arrondis d'interface, en pixels.
+	CornerRadius = { Small = 4, Medium = 8, Large = 12 },
+	-- Contours d'interface, en pixels : jamais de gros trait sombre.
+	Outline = { Thin = 1, Max = 2 },
+	-- Durées d'animation de l'interface, en secondes. Hover reprend la durée
+	-- réelle du survol (Theme.Motion.Duration, 0.12 s).
+	Motion = { Hover = 0.12, Fast = 0.16, Standard = 0.24 },
+}
+
 -- Palette claire de la version française : papier crème, eau menthe,
 -- encre charbon et boutons pastel, comme dans la vidéo de référence.
 Config.Colors = {
@@ -130,6 +155,12 @@ Config.Colors = {
 	LobbyOrange = Color3.fromHex("F5B84D"),
 	LobbyRoad = Color3.fromHex("FFFDF8"),
 	LobbyRoadShadow = Color3.fromHex("D2DDE0"),
+	-- Fond du menu en dégradé, accents chauds et pastille de pont (interface).
+	LobbyBackgroundTop = Color3.fromHex("F5F9F9"),
+	LobbyBackgroundBottom = Color3.fromHex("DDE8EA"),
+	LobbyAccent = Color3.fromHex("E7825F"),
+	LobbyAccentDeep = Color3.fromHex("D49675"),
+	BridgeChip = Color3.fromHex("7F8A7C"),
 	Ink = Color3.fromHex("33383A"),
 	InkSoft = Color3.fromHex("737D7C"),
 	Teal = Color3.fromHex("7FBDB5"),

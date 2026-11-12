@@ -45,7 +45,7 @@ return function(T, H)
 		T.eq(session.roadParts[Grid.key(x, y)], nil, "the erased cell has no parts")
 	end)
 
-	T.todo("client preview and server agree on water, missing bridges and budget (needs the rewritten InputController.planCells: input PR)", function()
+	T.test("client preview and server agree on water, missing bridges and budget", function()
 		local session = H.newSession("los_angeles")
 		local Grid, Maps = H.load("Grid"), H.load("Maps")
 		local length = 12

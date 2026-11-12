@@ -96,18 +96,16 @@ Chacun ouvre le fichier dans Roblox Studio et joue sa propre ville. Pratique pou
 | --- | --- | --- | --- |
 | Dessiner une route | Clic gauche + glisser, relâcher pour valider | — | Glisser |
 | Annuler le tracé en cours | `Échap` | `Échap` | — |
-| Effacer une route | Clic droit + glisser, ou outil « Effacer » | — | Outil « Effacer » |
+| Effacer une route | Clic droit + glisser (quel que soit l'outil), ou outil « Effacer » (`2`) | `2` | Outil « Effacer » |
 | Poser un rond-point | Outil « Rond-point » | `3` | Bouton du HUD |
-| Déplacer la caméra | Outil « Caméra » + glisser, ou clic milieu | `4` | Bouton du HUD |
-| Changer d'outil | Boutons du HUD | `1` / `2` / `3` / `4` | Boutons du HUD |
-| Zoomer / dézoomer | Molette | — | — |
+| Déplacer la caméra | Clic milieu + glisser, ou outil « Main » (`4`) | `4` | Deux doigts, ou outil « Main » |
+| Changer d'outil | Colonne d'outils à droite | `1` / `2` / `3` / `4` | Colonne d'outils |
+| Zoomer / dézoomer | Molette | — | Pincement |
 | Ouvrir les contrôles de temps | Cliquer sur l'horloge | — | Toucher l'horloge |
-| Pause | Bouton `II` | `P` | Bouton `II` |
-| Reprendre | Bouton `▶` | — | Bouton `▶` |
-| Changer la vitesse | Bouton `▶▶` | — | Bouton `▶▶` |
-| Rejouer / menu | Boutons de l'écran de fin | — | Boutons de l'écran de fin |
+| Menu pause | Bouton de pause du HUD | `P` (la touche le referme aussi) | Bouton de pause |
+| Changer la vitesse | Boutons `×1` / `×2` / `×3` de l'horloge | — | Boutons de l'horloge |
 
-La pause manuelle fige le temps mais **laisse la construction active** : on peut continuer à tracer ou effacer des routes et poser un rond-point. Aucun écran de pause ne s'affiche ; le bouton `▶` relance la simulation. La pause automatique du choix de semaine reste, elle, bloquante.
+Le **menu pause** (`P`) propose Reprendre, Rejouer, Paramètres (grille visible en permanence, astuces à l'écran) et Quitter vers le menu principal. Pendant qu'il est ouvert, le temps est figé et les commandes de la carte sont coupées. L'écran de fin affiche le score, le record et, quand le serveur les fournit, la durée, les statistiques et la cause de la défaite, avec les boutons Rejouer et Menu. Le choix de semaine reste bloquant.
 
 ---
 
@@ -290,8 +288,8 @@ Chaque carte possède son aperçu circulaire dans le lobby, avec un tracé de ro
 - [x] Choix hebdomadaire fidèle au jeu : routes + outil spécial, ou lot de routes
 - [x] Jauge de circulation et game over
 - [x] Records par carte avec DataStore et fallback en mémoire
-- [x] Interface adaptative portrait/paysage
-- [x] Caméra avec zoom et déplacement
+- [x] Interface claire : barre supérieure, colonne d'outils, compteurs homogènes, menu pause, paramètres, écran de fin ; adaptée de 1920×1080 aux téléphones, panneaux qui n'envoient plus leurs clics au monde
+- [x] Caméra : vue aérienne, zoom fluide avec limites, déplacement au clic milieu ou à deux doigts, marges d'interface
 - [x] Pause, reprise et accélération du temps
 - [x] Tout le décor et l'UI sont générés en code, sans asset externe
 
@@ -515,15 +513,15 @@ mini-rotorway/
    │  └─ Profile.luau            ← DataStore / records
    └─ StarterPlayer/StarterPlayerScripts/MiniMotorways/
       ├─ Main.client.luau        ← câblage client
-      ├─ CameraController.luau   ← caméra responsive au-dessus de la ville
+      ├─ CameraController.luau   ← vue aérienne, zoom fluide, limites, marges d'interface
       ├─ RoadPreview.luau        ← aperçu à la forme de la route
-      ├─ InputController.luau    ← dessin, annulation, gomme et caméra
+      ├─ InputController.luau    ← dessin, effacement, tactile, grille
       ├─ StoreVisualController.luau ← pins et alertes des magasins
       └─ UI/
-         ├─ Theme.luau           ← palette et constructeurs d'UI
+         ├─ Theme.luau           ← jetons de style, survol, ombres, aides
          ├─ MapPreview.luau      ← aperçus circulaires des cartes
          ├─ Lobby.luau           ← menu, cartes, options, records
-         └─ HUD.luau             ← score, semaine, outils, pause, game over
+         └─ HUD*.luau            ← HUD : barre supérieure, outils, compteurs, menus, responsive
 ```
 
 ### Fonctionnement
@@ -638,7 +636,7 @@ Les routes se règlent dans `Config.Dimensions.Road`, `RoadConfig.Visual` (`Corn
 
 - Le coin intérieur des virages reste vif : seul le coin extérieur est arrondi (la surface est une union de rectangles et de disques).
 - Les voitures utilisent un évitement simple et une réservation d'intersection : les embouteillages en boucle fermée restent possibles. C'est volontaire pour le prototype, mais des feux/priorités avancés seraient la prochaine amélioration.
-- Le zoom et le déplacement de caméra sont disponibles à la souris (molette, clic milieu, outil Caméra) ; les gestes tactiles à deux doigts ne sont pas encore gérés.
+- Menu pause : Échap ouvre aussi le menu de Roblox (non désactivable par script) ; à vérifier dans Studio. Les boutons de temps (32×28 px) sont sous la taille tactile conseillée.
 - Les records sont locaux au serveur/DataStore ; il n'y a pas encore de classement global.
 - Le nom et l'identité visuelle doivent être remplacés avant une publication publique.
 - Les tests automatiques (`bash tests/run.sh`) utilisent un Roblox simulé : ils ne remplacent pas un essai dans Studio.

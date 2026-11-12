@@ -19,11 +19,12 @@ deux améliorations. Choisis-en une pour continuer.
 Commandes :
 - Clic gauche + glisser : dessiner une route
 - Clic droit : effacer une route
-- 1 / 2 / 3 : route / gomme / rond-point
-- Molette : zoomer
-- Clic milieu + glisser : déplacer la caméra
-- P : pause (le temps s'arrête, mais tu peux continuer à dessiner/effacer)
-- ▶ : reprendre
+- 1 / 2 / 3 / 4 : route / gomme / rond-point / main (déplacer la vue)
+- Molette : zoomer (pincement au doigt)
+- Clic milieu + glisser (ou deux doigts) : déplacer la caméra
+- Échap pendant un tracé : annule le tracé sans rien consommer
+- P : menu pause (Reprendre, Rejouer, Paramètres, Quitter) ; P le referme
+- Horloge : clique dessus pour choisir la vitesse ×1 / ×2 / ×3
 
 Pour modifier le projet :
 - Les sources sont dans le dossier src/
