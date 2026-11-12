@@ -1,10 +1,12 @@
 --[[
 	WorldBuilder.luau
-	Construit le décor 3D d'une ville : sol, eau lissée, lignes de grille,
-	puis les dossiers qui recevront routes, bâtiments et voitures.
-	L'eau est dessinée avec les mêmes formes que l'aperçu du menu :
-	rectangles, ellipses et capsules, avec une ombre d'eau et un liseré de
-	côte blanc autour du remplissage menthe.
+	Construit le décor 3D d'une ville : un plateau clair posé sur un fond à
+	peine plus foncé, une grille très discrète, l'eau et les parcs (formes de
+	Maps), quelques arbres, puis les dossiers qui recevront routes, bâtiments
+	et voitures.
+	Les formes d'eau sont celles de l'aperçu du menu. Les rectangles et les barres
+	sont rognés au bord du plateau ; les ellipses doivent rester dans la carte
+	(vérifié par les tests).
 ]]
 
 local Workspace = game:GetService("Workspace")
@@ -12,336 +14,319 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Maps = require(Shared.Maps)
+local SessionUtil = require(script.Parent.SessionUtil)
+local part = SessionUtil.makePart
 
 local WorldBuilder = {}
 
-local function part(props)
-	local p = Instance.new("Part")
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.Material = Enum.Material.SmoothPlastic
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
+-- Un Cylinder a son axe selon X : la rotation le couche debout, son disque
+-- est alors dans le plan XZ, comme les cases vues d'en haut.
+local CYLINDER_UPRIGHT = CFrame.Angles(0, 0, math.rad(90))
 
-	local parent = nil
-	for key, value in pairs(props) do
-		if key == "Parent" then
-			parent = value
+-- Hauteurs des couches, en studs, au-dessus du plateau (y = 0). Chaque couche
+-- est posée au-dessus de la précédente : aucune surface coplanaire, donc pas de
+-- scintillement. Les routes (RoadConfig.Layers, dessus de 0.29 à 0.40) restent
+-- au-dessus du décor (0.18 au plus).
+local LAYER_THICKNESS = 0.08
+local GRASS_TOP = 0.015
+local SHORE_TOP = 0.10
+local WATER_TOP = 0.12
+local DRY_SHORE_TOP = 0.16
+local DRY_TOP = 0.18
+
+-- La grille passe sous l'eau : elle disparaît sous les lacs, comme dans le
+-- jeu d'origine, et ne concurrence pas les routes. Les lignes sont translucides
+-- et se croisent : les horizontales sont posées 0.01 plus haut que les
+-- verticales, sinon les deux se disputeraient le même plan à chaque croisement.
+local GRID_Y = 0.02
+local GRID_THICKNESS = 0.03
+local GRID_H_LIFT = 0.01
+
+local TREE_TOP = 0.075
+local TREE_THICKNESS = 0.03
+-- Carré de cases au centre du plateau, sans arbre (zone de départ).
+local START_AREA_CELLS = 4
+local TREE_SHADOW_TOP = 0.05
+local TREE_SHADOW_THICKNESS = 0.02
+
+-- Plateau : dalle de 1 stud dont le dessus est à y = 0. Les ombres de bord
+-- descendent par paliers, sous le plateau, et le fond est plus bas encore.
+local BOARD_THICKNESS = 1
+local SHADOW_THICKNESS = 0.2
+local SHADOW_Y = -1.1
+local SHADOW_STEP = 0.1
+local BACKDROP_THICKNESS = 0.4
+local BACKDROP_Y = -1.6
+
+-- Disque (ou ellipse) plat vu du dessus. Un Cylinder garde un dessus plan à la
+-- hauteur voulue ; une sphère aplatie (SpecialMesh) aurait un dôme dont seul le
+-- centre atteint cette hauteur, donc une forme visiblement plus petite que celle
+-- que Maps.isWater / Maps.isGrass utilisent.
+-- width : étendue selon X, depth : étendue selon Z (avant rotation de lacet).
+local function addDisk(parent, name, at, width, depth, color, yaw)
+	return part({
+		Name = name,
+		Parent = parent,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(LAYER_THICKNESS, width, depth),
+		CFrame = CFrame.new(at) * CFrame.Angles(0, yaw or 0, 0) * CYLINDER_UPRIGHT,
+		Color = color,
+	})
+end
+
+local function isOutside(nx, ny)
+	return nx < 0 or nx > 1 or ny < 0 or ny > 1
+end
+
+-- Coupe un segment normalisé au plateau [0, 1]² (Liang-Barsky). Renvoie les
+-- extrémités rognées, ou rien si le segment ne touche pas le plateau.
+local function clipSegment(x1, y1, x2, y2)
+	local dx, dy = x2 - x1, y2 - y1
+	local ps = { -dx, dx, -dy, dy }
+	local qs = { x1, 1 - x1, y1, 1 - y1 }
+	local t0, t1 = 0, 1
+	for i = 1, 4 do
+		local p, q = ps[i], qs[i]
+		if p == 0 then
+			if q < 0 then
+				return nil
+			end
+		elseif p < 0 then
+			t0 = math.max(t0, q / p)
 		else
-			p[key] = value
+			t1 = math.min(t1, q / p)
 		end
 	end
-	if parent then
-		p.Parent = parent
+	if t0 > t1 then
+		return nil
 	end
-	return p
+	return x1 + dx * t0, y1 + dy * t0, x1 + dx * t1, y1 + dy * t1
 end
 
--- Important : une Part de type Ball garde toujours un diamètre rond
--- (le minimum de ses trois axes). Pour obtenir une vraie ellipse d'eau
--- aplatie, on utilise un SpecialMesh sphère, qui suit les proportions
--- de la Part.
-local function addSphereMesh(p)
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Scale = Vector3.new(1, 1, 1)
-	mesh.Parent = p
-	return p
-end
-
--- Dessine une forme d'eau normalisée (0..1) à l'échelle de la carte.
--- padding agrandit la forme pour créer l'ombre ou le liseré de côte.
-local function drawWaterShape(parent, shape, origin, mapSize, color, height, centerY, padding)
+-- Dessine une forme normalisée (0..1) sur le plateau. top est le dessus de la
+-- couche, grow élargit la forme (liseré de côte). Les rectangles et les barres
+-- sont rognés au bord du plateau, pour ne jamais dépasser de la carte.
+local function addShape(parent, name, shape, board, color, top, grow)
+	local origin, extent = board.origin, board.extent
+	local centerY = top - LAYER_THICKNESS * 0.5
 	local kind = shape.type
-	padding = padding or 0
 
 	if kind == "rect" then
-		local center = Vector3.new(
-			origin.X + (shape.x + shape.w * 0.5) * mapSize,
-			centerY,
-			origin.Z + (shape.y + shape.h * 0.5) * mapSize
-		)
+		local minX = math.max(origin.X, origin.X + shape.x * extent - grow)
+		local maxX = math.min(origin.X + extent, origin.X + (shape.x + shape.w) * extent + grow)
+		local minZ = math.max(origin.Z, origin.Z + shape.y * extent - grow)
+		local maxZ = math.min(origin.Z + extent, origin.Z + (shape.y + shape.h) * extent + grow)
+		if maxX <= minX or maxZ <= minZ then
+			return
+		end
 		part({
-			Name = "Water",
+			Name = name,
 			Parent = parent,
-			Size = Vector3.new(
-				shape.w * mapSize + padding * 2,
-				height,
-				shape.h * mapSize + padding * 2
-			),
-			CFrame = CFrame.new(center),
+			Size = Vector3.new(maxX - minX, LAYER_THICKNESS, maxZ - minZ),
+			CFrame = CFrame.new((minX + maxX) * 0.5, centerY, (minZ + maxZ) * 0.5),
 			Color = color,
 		})
 		return
 	end
 
 	if kind == "circle" or kind == "ellipse" then
-		local rx = shape.rx or shape.r or 0.05
-		local ry = shape.ry or shape.r or rx
-		local center = Vector3.new(
-			origin.X + shape.x * mapSize,
-			centerY,
-			origin.Z + shape.y * mapSize
-		)
+		local rxNorm = shape.rx or shape.r or 0.05
+		local ryNorm = shape.ry or shape.r or rxNorm
 		-- La rotation de l'aperçu est horaire à l'écran ; en 3D, l'axe Z
 		-- descend et l'axe Y tourne dans le sens inverse.
-		local rotation = CFrame.Angles(0, math.rad(-(shape.rotation or 0)), 0)
-		local p = part({
-			Name = "Water",
-			Parent = parent,
-			Size = Vector3.new(
-				rx * 2 * mapSize + padding * 2,
-				height,
-				ry * 2 * mapSize + padding * 2
-			),
-			CFrame = CFrame.new(center) * rotation,
-			Color = color,
-		})
-		addSphereMesh(p)
+		local yaw = math.rad(-(shape.rotation or 0))
+		addDisk(
+			parent,
+			name,
+			Vector3.new(origin.X + shape.x * extent, centerY, origin.Z + shape.y * extent),
+			(rxNorm * extent + grow) * 2,
+			(ryNorm * extent + grow) * 2,
+			color,
+			yaw
+		)
 		return
 	end
 
 	if kind == "bar" then
-		local thickness = (shape.thickness or 0.04) * mapSize
-		local radius = thickness * 0.5 + padding
-		local x1 = shape.x1 * mapSize
-		local z1 = shape.y1 * mapSize
-		local x2 = shape.x2 * mapSize
-		local z2 = shape.y2 * mapSize
-		local dx = x2 - x1
-		local dz = z2 - z1
-		local length = math.sqrt(dx * dx + dz * dz)
-		if length <= 0 then
+		local radius = (shape.thickness or 0.04) * extent * 0.5 + grow
+		-- Rogner le segment (et non pincer ses extrémités) garde la direction de
+		-- la barre telle que Maps.isWater la voit dans le plateau.
+		local x1, y1, x2, y2 = clipSegment(shape.x1, shape.y1, shape.x2, shape.y2)
+		if not x1 then
 			return
 		end
-
-		if shape.flatStart then
-			-- Presqu'île : le côté terre est coupé net, seul le côté eau
-			-- garde un bout arrondi. Cela évite le gros capuchon blanc qui
-			-- dépassait sur le continent.
-			local from = Vector3.new(origin.X + x1, centerY, origin.Z + z1)
-			local to = Vector3.new(origin.X + x2, centerY, origin.Z + z2)
-			local direction = (to - from).Unit
-			part({
-				Name = "Water",
-				Parent = parent,
-				Size = Vector3.new(radius * 2, height, length),
-				CFrame = CFrame.lookAt((from + to) * 0.5, (from + to) * 0.5 + direction),
-				Color = color,
-			})
-			local cap = part({
-				Name = "Water",
-				Parent = parent,
-				Size = Vector3.new(radius * 2, height, radius * 2),
-				CFrame = CFrame.new(to),
-				Color = color,
-			})
-			addSphereMesh(cap)
+		local from = Vector3.new(origin.X + x1 * extent, centerY, origin.Z + y1 * extent)
+		local to = Vector3.new(origin.X + x2 * extent, centerY, origin.Z + y2 * extent)
+		local delta = to - from
+		if delta.Magnitude <= 0 then
 			return
 		end
-
-		local step = math.max(0.35, radius * 0.35)
-		local count = math.max(1, math.ceil(length / step))
-		for i = 0, count do
-			local t = i / count
-			local p = part({
-				Name = "Water",
-				Parent = parent,
-				Size = Vector3.new(radius * 2, height, radius * 2),
-				CFrame = CFrame.new(
-					origin.X + x1 + dx * t,
-					centerY,
-					origin.Z + z1 + dz * t
-				),
-				Color = color,
-			})
-			addSphereMesh(p)
+		local middle = (from + to) * 0.5
+		part({
+			Name = name,
+			Parent = parent,
+			Size = Vector3.new(radius * 2, LAYER_THICKNESS, delta.Magnitude),
+			CFrame = CFrame.lookAt(middle, middle + delta.Unit),
+			Color = color,
+		})
+		local function addCap(at)
+			addDisk(parent, name, at, radius * 2, radius * 2, color)
+		end
+		-- Un bout posé hors du plateau reste coupé net : un bout rond dépasserait
+		-- de la carte. Une presqu'île garde aussi son côté terre coupé net.
+		if not isOutside(shape.x2, shape.y2) then
+			addCap(to)
+		end
+		if not shape.flatStart and not isOutside(shape.x1, shape.y1) then
+			addCap(from)
 		end
 	end
 end
 
--- Cache l'eau qui dépasserait de la carte, pour garder un bord net.
-local function addWaterMasks(parent, origin, mapSize, border)
-	local y = 0.17
-	local thickness = 0.06
-	local outer = mapSize + border * 2
-
-	part({
-		Name = "WaterMaskTop",
-		Parent = parent,
-		Size = Vector3.new(outer, thickness, border),
-		CFrame = CFrame.new(origin.X + mapSize * 0.5, y, origin.Z - border * 0.5),
-		Color = Config.Colors.Paper,
-	})
-	part({
-		Name = "WaterMaskBottom",
-		Parent = parent,
-		Size = Vector3.new(outer, thickness, border),
-		CFrame = CFrame.new(origin.X + mapSize * 0.5, y, origin.Z + mapSize + border * 0.5),
-		Color = Config.Colors.Paper,
-	})
-	part({
-		Name = "WaterMaskLeft",
-		Parent = parent,
-		Size = Vector3.new(border, thickness, mapSize),
-		CFrame = CFrame.new(origin.X - border * 0.5, y, origin.Z + mapSize * 0.5),
-		Color = Config.Colors.Paper,
-	})
-	part({
-		Name = "WaterMaskRight",
-		Parent = parent,
-		Size = Vector3.new(border, thickness, mapSize),
-		CFrame = CFrame.new(origin.X + mapSize + border * 0.5, y, origin.Z + mapSize * 0.5),
-		Color = Config.Colors.Paper,
-	})
+-- Générateur pseudo-aléatoire (congruence linéaire) seedé par l'identifiant de
+-- la carte : le décor est identique d'une partie à l'autre, et math.random
+-- reste disponible pour le reste du jeu.
+local function seededRandom(text)
+	local state = 1
+	for i = 1, #text do
+		state = (state * 31 + string.byte(text, i)) % 2147483647
+	end
+	if state == 0 then
+		state = 1
+	end
+	return function()
+		state = (state * 16807) % 2147483647
+		return state / 2147483647
+	end
 end
 
--- Étiquette verticale sur la bordure, comme « LOS ANGELES » dans la vidéo.
-local function addMapLabel(parent, origin, mapSize, border, label)
-	local side = label.side or "right"
-	local strip
-	if side == "left" then
-		strip = part({
-			Name = "MapLabelStrip",
-			Parent = parent,
-			Size = Vector3.new(border * 0.42, 0.06, mapSize * 0.64),
-			CFrame = CFrame.new(origin.X - border * 0.5, 0.255, origin.Z + mapSize * 0.5),
-			Color = Config.Colors.Teal,
-			Transparency = 0.08,
-		})
-	else
-		strip = part({
-			Name = "MapLabelStrip",
-			Parent = parent,
-			Size = Vector3.new(border * 0.42, 0.06, mapSize * 0.64),
-			CFrame = CFrame.new(origin.X + mapSize + border * 0.5, 0.255, origin.Z + mapSize * 0.5),
-			Color = Config.Colors.Teal,
-			Transparency = 0.08,
+-- Arbres vus du dessus : de petits disques plats, par groupes de 2 ou 3 dans
+-- les cases de parc. Un arbre n'est posé que si son centre et ses bords
+-- tombent dans le parc, hors de l'eau. Renvoie les cases occupées par un arbre
+-- (clé « x:y », comme Grid.key) pour que les bâtiments les évitent.
+local function addTrees(grass, map, board)
+	local terrain = Config.Terrain
+	local origin, cells, tile = board.origin, board.cells, board.tile
+	local rand = seededRandom(map.id)
+	local treeCells = {}
+
+	-- La zone de départ, au centre, reste sans arbre : le joueur y commence
+	-- toujours sur un terrain dégagé.
+	local startFirst = math.floor((cells - START_AREA_CELLS) / 2)
+	local function inStartArea(x, y)
+		return x >= startFirst
+			and x < startFirst + START_AREA_CELLS
+			and y >= startFirst
+			and y < startFirst + START_AREA_CELLS
+	end
+
+	local function usableCell(x, y)
+		return x >= 0
+			and y >= 0
+			and x < cells
+			and y < cells
+			and not inStartArea(x, y)
+			and Maps.isGrass(map, x, y)
+			and not Maps.isWater(map, x, y)
+	end
+
+	local function usableAt(lx, lz)
+		return usableCell(math.floor(lx / tile), math.floor(lz / tile))
+	end
+
+	-- lx, lz : position locale, en studs, à partir du coin du plateau.
+	local function addDisc(name, lx, lz, diameter, top, thickness, color, transparency)
+		part({
+			Name = name,
+			Parent = grass,
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(thickness, diameter, diameter),
+			CFrame = CFrame.new(origin.X + lx, top - thickness * 0.5, origin.Z + lz) * CYLINDER_UPRIGHT,
+			Color = color,
+			Transparency = transparency,
 		})
 	end
 
-	local surface = Instance.new("SurfaceGui")
-	surface.Name = "Label"
-	surface.Face = Enum.NormalId.Top
-	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	surface.PixelsPerStud = 24
-	surface.LightInfluence = 0
-	surface.Parent = strip
+	-- Tous les arbres de la carte se partagent cette liste : deux groupes
+	-- voisins ne doivent pas se superposer.
+	local placed = {}
+	for cy = 0, cells - 1 do
+		for cx = 0, cells - 1 do
+			if usableCell(cx, cy) and rand() < Config.Terrain.TreeClusterChance then
+				local count = 2 + math.floor(rand() * 2)
+				local centerX = (cx + 0.5) * tile
+				local centerZ = (cy + 0.5) * tile
+				for _ = 1, count do
+					local angle = rand() * math.pi * 2
+					local distance = rand() * terrain.TreeSpread
+					local diameter = terrain.TreeDiameter * (0.85 + rand() * 0.3)
+					local tone = rand() < 0.5 and Config.Colors.TreeDark or Config.Colors.TreeLight
+					local lx = centerX + math.cos(angle) * distance
+					local lz = centerZ + math.sin(angle) * distance
 
-	local text = Instance.new("TextLabel")
-	text.Size = UDim2.fromScale(1, 1)
-	text.BackgroundTransparency = 1
-	text.BorderSizePixel = 0
-	text.Text = string.upper(label.text)
-	text.Font = Enum.Font.GothamBold
-	text.TextColor3 = Config.Colors.White
-	text.TextScaled = true
-	text.Rotation = side == "left" and 270 or 90
-	text.ZIndex = 2
-	text.Parent = surface
+					local half = diameter * 0.5
+					local clear = usableAt(lx, lz)
+						and usableAt(lx - half, lz)
+						and usableAt(lx + half, lz)
+						and usableAt(lx, lz - half)
+						and usableAt(lx, lz + half)
+					local spaced = true
+					for _, other in ipairs(placed) do
+						local dx = other.x - lx
+						local dz = other.z - lz
+						if dx * dx + dz * dz < terrain.TreeMinSpacing * terrain.TreeMinSpacing then
+							spaced = false
+						end
+					end
 
-	local constraint = Instance.new("UITextSizeConstraint")
-	constraint.MaxTextSize = 20
-	constraint.MinTextSize = 8
-	constraint.Parent = text
-end
-
--- Diagonal hatching around the playable map, like the reference PC build.
--- A SurfaceGui with clipped diagonal bars keeps the part count low.
-local function addHatchStrip(parent, center, size)
-	local base = part({
-		Name = "BorderHatch",
-		Parent = parent,
-		Size = size,
-		CFrame = CFrame.new(center),
-		Color = Config.Colors.Border,
-	})
-
-	local surface = Instance.new("SurfaceGui")
-	surface.Name = "Hatch"
-	surface.Face = Enum.NormalId.Top
-	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	surface.PixelsPerStud = 16
-	surface.LightInfluence = 0
-	surface.Parent = base
-
-	local frame = Instance.new("Frame")
-	frame.Size = UDim2.fromScale(1, 1)
-	frame.BackgroundColor3 = Config.Colors.Border
-	frame.BorderSizePixel = 0
-	frame.ClipsDescendants = true
-	frame.Parent = surface
-
-	for index = -4, 28 do
-		local stripe = Instance.new("Frame")
-		stripe.AnchorPoint = Vector2.new(0.5, 0.5)
-		stripe.Position = UDim2.fromScale(index / 16, 0.5)
-		stripe.Size = UDim2.new(0, 9, 2, 0)
-		stripe.Rotation = 45
-		stripe.BackgroundColor3 = Config.Colors.BorderStripe
-		stripe.BorderSizePixel = 0
-		stripe.Parent = frame
+					if clear and spaced then
+						table.insert(placed, { x = lx, z = lz })
+						addDisc(
+							"TreeShadow",
+							lx + terrain.TreeShadowOffset,
+							lz + terrain.TreeShadowOffset,
+							diameter * terrain.TreeShadowScale,
+							TREE_SHADOW_TOP,
+							TREE_SHADOW_THICKNESS,
+							Config.Colors.BuildingShadow,
+							terrain.TreeShadowTransparency
+						)
+						addDisc("Tree", lx, lz, diameter, TREE_TOP, TREE_THICKNESS, tone, 0)
+						treeCells[math.floor(lx / tile) .. ":" .. math.floor(lz / tile)] = true
+					end
+				end
+			end
+		end
 	end
+	return treeCells
 end
 
-local function addHatchedBorder(parent, origin, mapSize, border)
-	local y = 0.21
-	local thickness = 0.06
-	local outer = mapSize + border * 2
-
-	addHatchStrip(
-		parent,
-		Vector3.new(origin.X + mapSize * 0.5, y, origin.Z - border * 0.5),
-		Vector3.new(outer, thickness, border)
-	)
-	addHatchStrip(
-		parent,
-		Vector3.new(origin.X + mapSize * 0.5, y, origin.Z + mapSize + border * 0.5),
-		Vector3.new(outer, thickness, border)
-	)
-	addHatchStrip(
-		parent,
-		Vector3.new(origin.X - border * 0.5, y, origin.Z + mapSize * 0.5),
-		Vector3.new(border, thickness, mapSize)
-	)
-	addHatchStrip(
-		parent,
-		Vector3.new(origin.X + mapSize + border * 0.5, y, origin.Z + mapSize * 0.5),
-		Vector3.new(border, thickness, mapSize)
-	)
-
-	-- Thin dark lip so the hatching never bleeds onto the playable grid.
-	local lipColor = Config.Colors.Border
-	part({
-		Name = "MapLipTop",
-		Parent = parent,
-		Size = Vector3.new(mapSize + 0.8, 0.05, 0.4),
-		CFrame = CFrame.new(origin.X + mapSize * 0.5, 0.235, origin.Z + 0.2),
-		Color = lipColor,
-	})
-	part({
-		Name = "MapLipBottom",
-		Parent = parent,
-		Size = Vector3.new(mapSize + 0.8, 0.05, 0.4),
-		CFrame = CFrame.new(origin.X + mapSize * 0.5, 0.235, origin.Z + mapSize - 0.2),
-		Color = lipColor,
-	})
-	part({
-		Name = "MapLipLeft",
-		Parent = parent,
-		Size = Vector3.new(0.4, 0.05, mapSize + 0.8),
-		CFrame = CFrame.new(origin.X + 0.2, 0.235, origin.Z + mapSize * 0.5),
-		Color = lipColor,
-	})
-	part({
-		Name = "MapLipRight",
-		Parent = parent,
-		Size = Vector3.new(0.4, 0.05, mapSize + 0.8),
-		CFrame = CFrame.new(origin.X + mapSize - 0.2, 0.235, origin.Z + mapSize * 0.5),
-		Color = lipColor,
-	})
+-- Grille : une ligne par limite de case intérieure, posée à origin + i * tile,
+-- exactement là où Grid.center place les bords de cases.
+local function addGrid(grid, board)
+	local origin, extent, tile = board.origin, board.extent, board.tile
+	local width = Config.Terrain.GridLineWidth
+	local transparency = Config.Terrain.GridBaseTransparency
+	for i = 1, board.cells - 1 do
+		local offset = i * tile
+		part({
+			Name = "GridV",
+			Parent = grid,
+			Size = Vector3.new(width, GRID_THICKNESS, extent),
+			CFrame = CFrame.new(origin.X + offset, GRID_Y, origin.Z + extent * 0.5),
+			Color = Config.Colors.GridTerrain,
+			Transparency = transparency,
+		})
+		part({
+			Name = "GridH",
+			Parent = grid,
+			Size = Vector3.new(extent, GRID_THICKNESS, width),
+			CFrame = CFrame.new(origin.X + extent * 0.5, GRID_Y + GRID_H_LIFT, origin.Z + offset),
+			Color = Config.Colors.GridTerrain,
+			Transparency = transparency,
+		})
+	end
 end
 
 function WorldBuilder.build(session)
@@ -350,9 +335,9 @@ function WorldBuilder.build(session)
 	local tile = session.tile
 	local map = session.map
 
-	local mapSize = size * tile
-	local center = origin + Vector3.new(mapSize / 2, 0, mapSize / 2)
-	local border = 24
+	local extent = size * tile
+	local center = origin + Vector3.new(extent / 2, 0, extent / 2)
+	local board = { origin = origin, extent = extent, cells = size, tile = tile }
 
 	local worlds = Workspace:FindFirstChild("MMWorlds")
 	if not worlds then
@@ -364,166 +349,85 @@ function WorldBuilder.build(session)
 	local root = Instance.new("Folder")
 	root.Name = "City_" .. session.worldIndex
 
-	local buildings = Instance.new("Folder")
-	buildings.Name = "Buildings"
-	buildings.Parent = root
+	local function folder(name)
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = root
+		return f
+	end
 
-	local roads = Instance.new("Folder")
-	roads.Name = "Roads"
-	roads.Parent = root
+	local buildings = folder("Buildings")
+	local roads = folder("Roads")
+	local cars = folder("Cars")
+	local fx = folder("FX")
+	local water = folder("Water")
+	local grass = folder("Grass")
+	local grid = folder("Grid")
+	-- Le client règle la transparence de la grille pendant la construction.
+	grid:SetAttribute("BaseTransparency", Config.Terrain.GridBaseTransparency)
+	grid:SetAttribute("ActiveTransparency", Config.Terrain.GridActiveTransparency)
 
-	local cars = Instance.new("Folder")
-	cars.Name = "Cars"
-	cars.Parent = root
-
-	local fx = Instance.new("Folder")
-	fx.Name = "FX"
-	fx.Parent = root
-
-	local water = Instance.new("Folder")
-	water.Name = "Water"
-	water.Parent = root
-
-	local grass = Instance.new("Folder")
-	grass.Name = "Grass"
-	grass.Parent = root
-
-	-- Fond clair, papier crème : la carte ressemble à une feuille posée sur un bureau.
-	local backdrop = part({
-		Name = "Backdrop",
-		Size = Vector3.new(mapSize + 240, 1.0, mapSize + 240),
-		CFrame = CFrame.new(center + Vector3.new(0, -2.2, 0)),
+	-- Fond : une seule dalle, à peine plus foncée que le plateau.
+	local backdropSize = extent + Config.Terrain.BackdropMargin * 2
+	part({
+		Name = "Background",
+		Parent = root,
+		Size = Vector3.new(backdropSize, BACKDROP_THICKNESS, backdropSize),
+		CFrame = CFrame.new(center.X, BACKDROP_Y, center.Z),
 		Color = Config.Colors.Background,
 	})
-	backdrop.Parent = root
 
-	local paper = part({
-		Name = "Paper",
-		Size = Vector3.new(mapSize + border * 2, 1.6, mapSize + border * 2),
-		CFrame = CFrame.new(center + Vector3.new(0, -1.5, 0)),
-		Color = Config.Colors.Paper,
-	})
-	paper.Parent = root
+	-- Ombre de bord très douce : deux couches transparentes, légèrement décalées
+	-- en profondeur pour ne jamais être coplanaires.
+	for index, layer in ipairs(Config.Terrain.BoardShadow) do
+		local shadowSize = extent + layer.grow * 2
+		part({
+			Name = "BoardShadow",
+			Parent = root,
+			Size = Vector3.new(shadowSize, SHADOW_THICKNESS, shadowSize),
+			CFrame = CFrame.new(center.X, SHADOW_Y - (index - 1) * SHADOW_STEP, center.Z),
+			Color = Config.Colors.CardShadow,
+			Transparency = layer.transparency,
+		})
+	end
 
-	-- Sol crème.
-	local ground = part({
+	-- Plateau clair et uniforme : le seul élément qui reçoit les clics.
+	part({
 		Name = "Ground",
-		Size = Vector3.new(mapSize, 1, mapSize),
-		CFrame = CFrame.new(center + Vector3.new(0, -0.5, 0)),
+		Parent = root,
+		Size = Vector3.new(extent, BOARD_THICKNESS, extent),
+		CFrame = CFrame.new(center.X, -BOARD_THICKNESS * 0.5, center.Z),
 		Color = map.land,
 		CanQuery = true,
 	})
-	ground.Parent = root
 
-	-- Parcs jaune-vert, dessinés sous la grille et sous l'eau.
-	for _, shape in ipairs(map.grassShapes or {}) do
-		drawWaterShape(grass, shape, origin, mapSize, map.grass or Config.Colors.Grass, 0.02, 0.005, 0)
-	end
+	-- Parcs, puis arbres dans les parcs, puis grille : tout sous l'eau.
+	local grassShapes = map.grassShapes or {}
+	local waterShapes = map.waterShapes or {}
+	local dryShapes = map.dryShapes or {}
 
-	-- Petits arbres plats dans les parcs : deux disques superposés, un sombre
-	-- et un clair, pour retrouver les taches végétales de la référence.
-	local treeRotation = CFrame.Angles(0, 0, math.rad(90))
-	local function addTreeCluster(cx, cz, scale)
-		local dark = part({
-			Name = "Tree",
-			Parent = grass,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.05, 1.45 * scale, 1.45 * scale),
-			CFrame = CFrame.new(cx, 0.032, cz) * treeRotation,
-			Color = Config.Colors.TreeDark,
-			CastShadow = false,
-		})
-		part({
-			Name = "TreeLeaf",
-			Parent = grass,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.05, 1.02 * scale, 1.02 * scale),
-			CFrame = CFrame.new(cx - 0.12 * scale, 0.042, cz - 0.12 * scale) * treeRotation,
-			Color = Config.Colors.TreeLight,
-			CastShadow = false,
-		})
-		return dark
+	for _, shape in ipairs(grassShapes) do
+		addShape(grass, "Grass", shape, board, map.grass, GRASS_TOP, 0)
 	end
+	local treeCells = addTrees(grass, map, board)
+	addGrid(grid, board)
 
-	for index, shape in ipairs(map.grassShapes or {}) do
-		local cx, cz
-		if shape.type == "ellipse" then
-			cx, cz = shape.x, shape.y
-		elseif shape.type == "rect" then
-			cx, cz = shape.x + shape.w * 0.5, shape.y + shape.h * 0.5
-		elseif shape.type == "bar" then
-			cx, cz = (shape.x1 + shape.x2) * 0.5, (shape.y1 + shape.y2) * 0.5
-		end
-		if cx then
-			local x = origin.X + cx * mapSize
-			local z = origin.Z + cz * mapSize
-			local spread = mapSize * 0.045 + (index % 2) * mapSize * 0.012
-			addTreeCluster(x, z, 1.0)
-			addTreeCluster(x - spread, z + spread * 0.35, 0.82)
-			addTreeCluster(x + spread * 0.72, z - spread * 0.55, 0.72)
-		end
+	-- Eau : liseré clair fin, puis remplissage. Les presqu'îles recouvrent
+	-- l'eau avec leur propre liseré, puis leur terre ; les parcs secs les
+	-- plus petits sont posés en dernier.
+	local shoreline = Config.Terrain.Shoreline
+	local coast = Config.Colors.Coast
+	for _, shape in ipairs(waterShapes) do
+		addShape(water, "Shore", shape, board, coast, SHORE_TOP, shoreline)
 	end
-
-	-- Lignes de grille, dessinées avant l'eau pour être recouvertes par elle.
-	local lineColor = Config.Colors.GridLine
-	for i = 1, size - 1 do
-		local offset = i * tile
-		local vertical = part({
-			Name = "GridV",
-			Parent = root,
-			Size = Vector3.new(0.10, 0.035, mapSize),
-			CFrame = CFrame.new(origin + Vector3.new(offset, 0.02, mapSize / 2)),
-			Color = lineColor,
-			Transparency = 0.05,
-		})
-		vertical.Parent = root
-
-		local horizontal = part({
-			Name = "GridH",
-			Parent = root,
-			Size = Vector3.new(mapSize, 0.035, 0.10),
-			CFrame = CFrame.new(origin + Vector3.new(mapSize / 2, 0.02, offset)),
-			Color = lineColor,
-			Transparency = 0.05,
-		})
-		horizontal.Parent = root
+	for _, shape in ipairs(waterShapes) do
+		addShape(water, "Water", shape, board, map.water, WATER_TOP, 0)
 	end
-
-	-- Eau en trois couches : ombre extérieure, liseré de côte blanc, puis
-	-- remplissage. Le liseré blanc rend la côte lisible sur le sol crème,
-	-- comme sur l'aperçu du menu.
-	local outlinePadding = math.max(0.45, tile * 0.20)
-	local shadowColor = map.waterDeep or Config.Colors.WaterDeep
-	local coastColor = Config.Colors.Coast or Config.Colors.White
-	local shapes = map.waterShapes or {}
-
-	for _, shape in ipairs(shapes) do
-		drawWaterShape(water, shape, origin, mapSize, shadowColor, 0.08, 0.06, outlinePadding * 1.8)
+	for _, shape in ipairs(dryShapes) do
+		addShape(water, "Shore", shape, board, coast, DRY_SHORE_TOP, shoreline)
 	end
-	for _, shape in ipairs(shapes) do
-		drawWaterShape(water, shape, origin, mapSize, coastColor, 0.10, 0.11, outlinePadding * 0.95)
-	end
-	for _, shape in ipairs(shapes) do
-		drawWaterShape(water, shape, origin, mapSize, map.water, 0.10, 0.13, 0)
-	end
-
-	-- Presqu'îles sèches : elles recouvrent l'eau, avec le même liseré de
-	-- côte blanc. Le raccord terre est posé au-dessus pour souder la
-	-- presqu'île au continent sans laisser de trait blanc en travers.
-	for _, shape in ipairs(map.dryShapes or {}) do
-		drawWaterShape(water, shape, origin, mapSize, coastColor, 0.04, 0.19, outlinePadding * 0.95)
-	end
-	for _, shape in ipairs(map.dryShapes or {}) do
-		drawWaterShape(water, shape, origin, mapSize, map.land, 0.03, 0.20, 0)
-	end
-	for _, shape in ipairs(map.dryPatches or {}) do
-		drawWaterShape(water, shape, origin, mapSize, map.land, 0.03, 0.215, 0)
-	end
-
-	addWaterMasks(root, origin, mapSize, border)
-	addHatchedBorder(root, origin, mapSize, border)
-	for _, label in ipairs(map.labels or {}) do
-		addMapLabel(root, origin, mapSize, border, label)
+	for _, shape in ipairs(dryShapes) do
+		addShape(water, "Land", shape, board, map.land, DRY_TOP, 0)
 	end
 
 	root.Parent = worlds
@@ -536,6 +440,9 @@ function WorldBuilder.build(session)
 		FX = fx,
 		Water = water,
 		Grass = grass,
+		Grid = grid,
+		-- Cases occupées par un arbre : les bâtiments doivent les éviter.
+		treeCells = treeCells,
 	}
 end
 

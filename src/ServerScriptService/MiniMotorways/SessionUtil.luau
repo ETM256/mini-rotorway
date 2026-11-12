@@ -17,6 +17,8 @@ end
 
 local function makePart(props)
 	local p = Instance.new("Part")
+	-- Rendu à plat : aucune ombre dynamique, les ombres sont dessinées en pièces.
+	p.CastShadow = false
 	p.Anchored = true
 	p.CanCollide = false
 	p.CanQuery = false

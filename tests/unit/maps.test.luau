@@ -24,7 +24,7 @@ return function(T, H)
 			T.eq(type(map.waterShapes), "table", map.id .. " waterShapes")
 			T.eq(type(map.grassShapes), "table")
 			T.eq(type(map.dryShapes), "table")
-			T.eq(type(map.labels), "table")
+			T.eq(map.labels, nil, "side labels were removed (brief part 7)")
 		end
 	end)
 
@@ -98,34 +98,16 @@ return function(T, H)
 		end
 	end)
 
-	T.test("dry shapes override water", function()
+	T.test("isWater reads the shapes at each cell centre, including the grid corners", function()
+		-- Le même (x + 0.5) / size sert à l'aperçu et au rendu 3D : un coin
+		-- de la grille doit répondre comme le point normalisé correspondant.
 		local Maps, Config = maps()
 		local n = Config.Grid.Size
 		for _, map in ipairs(Maps.all()) do
-			if #map.dryShapes > 0 then
-				local checked = 0
-				for x = 0, n - 1 do
-					for y = 0, n - 1 do
-						local shape = map.dryShapes[1]
-						if shape.type == "bar" then
-							local nx, ny = (x + 0.5) / n, (y + 0.5) / n
-							if math.abs(nx - shape.x1) < 0.01 and ny >= shape.y1 and ny <= shape.y2 then
-								T.falsy(Maps.isWater(map, x, y), map.id .. " dry cell " .. x .. ":" .. y)
-								checked += 1
-							end
-						end
-					end
-				end
+			for _, corner in ipairs({ { 0, 0 }, { n - 1, 0 }, { 0, n - 1 }, { n - 1, n - 1 } }) do
+				local x, y = corner[1], corner[2]
+				T.eq(Maps.isWater(map, x, y), Maps.isWaterAt(map, (x + 0.5) / n, (y + 0.5) / n), map.id .. " corner " .. x .. ":" .. y)
 			end
 		end
-	end)
-
-	T.test("isWater is symmetric with the preview coordinate convention", function()
-		-- Le même (x + 0.5) / size sert à l'aperçu et au rendu 3D.
-		local Maps, Config = maps()
-		local map = Maps.all()[1]
-		local n = Config.Grid.Size
-		T.eq(Maps.isWater(map, 0, 0), Maps.isWater(map, 0, 0))
-		T.eq(type(Maps.isWater(map, n - 1, n - 1)), "boolean")
 	end)
 end

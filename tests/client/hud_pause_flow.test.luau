@@ -223,7 +223,7 @@ return function(T, H)
 		T.falsy(shown(hintLabel()), "hints stay off in the new game")
 	end)
 
-	T.todo("the grid setting pins the grid and a new game keeps it (needs the world Grid folder from WorldBuilder: maps PR)", function()
+	T.test("the grid setting pins the grid and a new game keeps it", function()
 		boot()
 		local function gridTransparency()
 			for _, world in ipairs(workspace:GetChildren()) do
