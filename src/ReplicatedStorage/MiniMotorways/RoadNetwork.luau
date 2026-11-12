@@ -9,24 +9,40 @@
 	ne crée aucun objet.
 ]]
 
+local Grid = require(script.Parent.Grid)
+local RoadConfig = require(script.Parent.RoadConfig)
+
 local RoadNetwork = {}
 
-local ORTHOGONAL = {
-	{ 0, -1 },
-	{ 1, 0 },
-	{ 0, 1 },
-	{ -1, 0 },
-}
-
-local DIAGONAL = {
-	{ 1, -1 },
-	{ 1, 1 },
-	{ -1, 1 },
-	{ -1, -1 },
-}
+-- Décalages partagés avec Grid (ordre haut, droite, bas, gauche).
+local ORTHOGONAL = Grid.ORTHOGONAL_OFFSETS
+local DIAGONAL = Grid.DIAGONAL_OFFSETS
 
 RoadNetwork.ORTHOGONAL = ORTHOGONAL
 RoadNetwork.DIAGONAL = DIAGONAL
+
+-- Nombre maximal de cases ajoutées par un seul tracé. Au-delà, le tracé
+-- serait tronqué sans que l'appelant le sache : on le refuse en bloc.
+local MAX_PATH_STEPS = RoadConfig.Input.MaxPathSteps
+
+-- Vrai pour un nombre entier fini. NaN et l'infini échouent à ces deux tests.
+local function isCell(value)
+	return type(value) == "number" and value == math.floor(value) and math.abs(value) < math.huge
+end
+
+local function isFinite(value)
+	return type(value) == "number" and math.abs(value) < math.huge
+end
+
+local function countAt(roads, x, y, offsets)
+	local count = 0
+	for _, offset in ipairs(offsets) do
+		if roads[Grid.key(x + offset[1], y + offset[2])] then
+			count += 1
+		end
+	end
+	return count
+end
 
 function RoadNetwork.neighbors(x, y, allowDiagonals)
 	local list = {}
@@ -56,25 +72,25 @@ function RoadNetwork.isAdjacent(ax, ay, bx, by, allowDiagonals)
 	return allowDiagonals == true and dx == 1 and dy == 1
 end
 
+-- Nombre de cases de route voisines. Les diagonales ne comptent que si
+-- allowDiagonals : elles ne relient une case que dans ce mode.
 function RoadNetwork.countRoadNeighbors(roads, x, y, allowDiagonals)
-	local count = 0
-	for _, neighbor in ipairs(RoadNetwork.neighbors(x, y, allowDiagonals)) do
-		local key = neighbor[1] .. ":" .. neighbor[2]
-		if roads[key] then
-			count += 1
-		end
+	local count = countAt(roads, x, y, ORTHOGONAL)
+	if allowDiagonals then
+		count += countAt(roads, x, y, DIAGONAL)
 	end
 	return count
 end
 
 function RoadNetwork.countRoadNeighborsAtKey(roads, key, allowDiagonals)
-	local x, y = string.match(key, "^(%-?%d+):(%-?%d+)$")
+	local x, y = Grid.parse(key)
 	if not x then
 		return 0
 	end
-	return RoadNetwork.countRoadNeighbors(roads, tonumber(x), tonumber(y), allowDiagonals)
+	return RoadNetwork.countRoadNeighbors(roads, x, y, allowDiagonals)
 end
 
+-- Seuil : 3 connexions ou plus = T ou croix, qui ont besoin d'un raccord.
 function RoadNetwork.isIntersection(roads, x, y, allowDiagonals)
 	return RoadNetwork.countRoadNeighbors(roads, x, y, allowDiagonals) >= 3
 end
@@ -83,89 +99,95 @@ function RoadNetwork.isIntersectionKey(roads, key, allowDiagonals)
 	return RoadNetwork.countRoadNeighborsAtKey(roads, key, allowDiagonals) >= 3
 end
 
--- Construit un chemin orthogonal entre deux cases, sans inclure la case de
--- départ. preferredAxis vaut "x" ou "y" : il décide de l'axe parcouru en
--- premier quand le déplacement est en biais.
+--[[
+	Construit un chemin orthogonal entre deux cases, sans inclure la case de
+	départ. Renvoie (cellules, complet) :
+	  - complet vaut false si les coordonnées ne sont pas des entiers finis ou
+	    si le trajet dépasse MAX_PATH_STEPS ; la liste est alors vide ;
+	  - sinon la liste mène exactement à (toX, toY).
+	preferredAxis vaut "x" (horizontal d'abord) ou "y" (vertical d'abord) ; sans
+	préférence, l'axe dominant passe en premier, et à égalité c'est l'horizontal.
+	Quand le trajet est droit, l'axe n'a pas d'effet.
+]]
 function RoadNetwork.manhattanPath(fromX, fromY, toX, toY, preferredAxis)
 	local cells = {}
-	if fromX == toX and fromY == toY then
-		return cells
+	if not (isCell(fromX) and isCell(fromY) and isCell(toX) and isCell(toY)) then
+		return cells, false
 	end
 
 	local dx = toX - fromX
 	local dy = toY - fromY
-	local horizontalFirst
+	local absX = math.abs(dx)
+	local absY = math.abs(dy)
+	if absX + absY > MAX_PATH_STEPS then
+		return cells, false
+	end
 
-	if math.abs(dy) == 0 then
-		horizontalFirst = true
-	elseif math.abs(dx) == 0 then
-		horizontalFirst = false
-	elseif preferredAxis == "x" then
+	local horizontalFirst
+	if preferredAxis == "x" then
 		horizontalFirst = true
 	elseif preferredAxis == "y" then
 		horizontalFirst = false
-	elseif math.abs(dx) > math.abs(dy) then
-		horizontalFirst = true
-	elseif math.abs(dy) > math.abs(dx) then
-		horizontalFirst = false
 	else
-		horizontalFirst = true
+		horizontalFirst = absX >= absY
 	end
 
+	local stepX = dx > 0 and 1 or -1
+	local stepY = dy > 0 and 1 or -1
 	local x, y = fromX, fromY
-	local guard = 0
-	local function add(cx, cy)
-		guard += 1
-		if guard <= 512 then
-			cells[#cells + 1] = { cx, cy }
-		end
-	end
-
 	if horizontalFirst then
-		local stepX = dx > 0 and 1 or -1
-		while x ~= toX and guard < 512 do
+		for _ = 1, absX do
 			x += stepX
-			add(x, y)
+			cells[#cells + 1] = { x, y }
 		end
-		local stepY = dy > 0 and 1 or -1
-		while y ~= toY and guard < 512 do
+		for _ = 1, absY do
 			y += stepY
-			add(x, y)
+			cells[#cells + 1] = { x, y }
 		end
 	else
-		local stepY = dy > 0 and 1 or -1
-		while y ~= toY and guard < 512 do
+		for _ = 1, absY do
 			y += stepY
-			add(x, y)
+			cells[#cells + 1] = { x, y }
 		end
-		local stepX = dx > 0 and 1 or -1
-		while x ~= toX and guard < 512 do
+		for _ = 1, absX do
 			x += stepX
-			add(x, y)
+			cells[#cells + 1] = { x, y }
 		end
 	end
-
-	return cells
+	return cells, true
 end
 
--- Ajoute les cellules intermédiaires d'un tracé déjà ordonné, en supprimant
--- les doublons. Utile pour un lot envoyé au serveur.
+--[[
+	Enchaîne une liste de cases cibles en tracé orthogonal depuis
+	(startX, startY). Les coordonnées non entières sont ramenées à leur case
+	(floor) ; une cible NaN, infinie ou absente est ignorée sans faire avancer
+	le tracé. Chaque case n'apparaît qu'une fois et la case de départ n'est
+	jamais renvoyée : si le tracé revient sur ses pas, une case déjà présente
+	est omise, donc deux cases consécutives peuvent ne pas être voisines. La
+	liste sert à poser des routes (un ensemble de cases), pas à être parcourue.
+]]
 function RoadNetwork.flattenPath(startX, startY, cells, preferredAxis)
 	local result = {}
-	local seen = {}
-	local x, y = startX, startY
+	if not (isFinite(startX) and isFinite(startY)) then
+		return result
+	end
+
+	local x, y = math.floor(startX), math.floor(startY)
+	local seen = { [Grid.key(x, y)] = true }
 	for _, cell in ipairs(cells or {}) do
-		if type(cell) == "table" then
-			local tx = math.floor(tonumber(cell[1]) or x)
-			local ty = math.floor(tonumber(cell[2]) or y)
-			for _, step in ipairs(RoadNetwork.manhattanPath(x, y, tx, ty, preferredAxis)) do
-				local key = step[1] .. ":" .. step[2]
-				if not seen[key] then
-					seen[key] = true
-					result[#result + 1] = step
+		if type(cell) == "table" and isFinite(cell[1]) and isFinite(cell[2]) then
+			local tx, ty = math.floor(cell[1]), math.floor(cell[2])
+			local steps, complete = RoadNetwork.manhattanPath(x, y, tx, ty, preferredAxis)
+			if complete then
+				for _, step in ipairs(steps) do
+					local key = Grid.key(step[1], step[2])
+					if not seen[key] then
+						seen[key] = true
+						result[#result + 1] = step
+					end
 				end
+				x, y = tx, ty
 			end
-			x, y = tx, ty
 		end
 	end
 	return result
