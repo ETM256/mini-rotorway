@@ -66,11 +66,10 @@ return function(T, H)
 		end
 	end)
 
-	-- Part 4.2 of the brief: colours must be recognisable from afar.
-	-- Miel/Orange (0.11), Corail/Orange (0.13) and Bleu/Turquoise (0.16) are
-	-- currently too close. Fix the palette in
-	-- Config.HouseColors, then turn this into a T.test.
-	T.todo("house colors: pairwise RGB distance >= 0.18 (recognisable at a distance)", function()
+	-- Part 4.2 of the brief: colours must be recognisable from afar. Garde-fou
+	-- sur Config.HouseColors (Miel/Orange, Corail/Orange, Bleu/Turquoise étaient
+	-- trop proches avant la retouche de la palette).
+	T.test("house colors: pairwise RGB distance >= 0.18 (recognisable at a distance)", function()
 		for _, pair in ipairs(colorDistances()) do
 			T.ge(pair.distance, 0.18, pair.names)
 		end
