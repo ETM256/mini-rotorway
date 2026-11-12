@@ -1,4 +1,7 @@
 -- Équilibrage avec un bot (spec 11, 12, 13) : parties déterministes à vitesse 3.
+-- Les durées relevées ci-dessous viennent de la circulation finale (PR
+-- circulation) ; avec la circulation actuelle elles sont plus courtes, mais les
+-- bornes du test restent valables.
 -- Le bot relie chaque maison à un magasin de sa couleur par le plus court
 -- chemin de cases libres, tant que le budget le permet, et prend toujours la
 -- première proposition de semaine. Mesures de la vague 4 (graines 1 à 3,
