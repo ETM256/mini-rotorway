@@ -9,20 +9,26 @@ return function(T, H)
 		return elapsed
 	end
 
-	T.test("setSpeed clamps to 1..3 and ignores junk", function()
+	-- Session:setSpeed n'accepte que les entiers 1..3 ; toute autre valeur est
+	-- ignorée et la vitesse garde sa valeur précédente (pas de clamp).
+	T.test("setSpeed accepts integers 1..3 and ignores anything else", function()
 		local session = H.newSession("los_angeles")
+		T.eq(session.speed, 1, "starts at speed 1")
 		session:setSpeed(2)
 		T.eq(session.speed, 2)
-		session:setSpeed(99)
+		session:setSpeed(3)
 		T.eq(session.speed, 3)
-		session:setSpeed(-4)
+		session:setSpeed(1)
 		T.eq(session.speed, 1)
-		session:setSpeed("fast")
-		T.eq(session.speed, 1)
+		T.eq(H.lastSent("State").speed, 1)
+
+		session:setSpeed(2)
+		for _, junk in ipairs({ 99, -4, 0, 4, "fast", 2.7, 1.5, 0 / 0, math.huge }) do
+			session:setSpeed(junk)
+			T.eq(session.speed, 2, "junk value ignored: " .. tostring(junk))
+		end
 		session:setSpeed(nil)
-		T.eq(session.speed, 1)
-		session:setSpeed(2.7)
-		T.eq(session.speed, 2)
+		T.eq(session.speed, 2, "nil ignored")
 		T.eq(H.lastSent("State").speed, 2)
 	end)
 

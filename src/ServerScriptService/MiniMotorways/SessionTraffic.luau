@@ -377,12 +377,14 @@ return function(Session)
 
 		-- Distance de sécurité. On freine avant la voiture de devant, puis on
 		-- s'arrête seulement quand la garde minimale est atteinte.
+		-- L'amélioration « circulation » (récompense) réduit la distance de sécurité.
+		local spacing = Config.Traffic.CarSpacing * (self.getTrafficMultiplier and self:getTrafficMultiplier() or 1)
 		local gap = self:frontGap(car, direction)
 		if gap then
-			if gap <= Config.Traffic.CarSpacing then
+			if gap <= spacing then
 				blocked = true
-			elseif gap < Config.Traffic.CarSpacing + 2.4 then
-				targetSpeed = math.max(0.20, (gap - Config.Traffic.CarSpacing) / 2.4)
+			elseif gap < spacing + 2.4 then
+				targetSpeed = math.max(0.20, (gap - spacing) / 2.4)
 			end
 		end
 
@@ -424,7 +426,7 @@ return function(Session)
 			local advance = (Config.Traffic.CarSpeed * speedFactor * dt) / segmentLength
 			if gap then
 				-- Ne jamais franchir la garde minimale, même avec l'inertie.
-				local maxAdvance = (gap - Config.Traffic.CarSpacing * 0.85) / segmentLength
+				local maxAdvance = (gap - spacing * 0.85) / segmentLength
 				advance = math.max(0, math.min(advance, maxAdvance))
 			end
 			car.t += advance

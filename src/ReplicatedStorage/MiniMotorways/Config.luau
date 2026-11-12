@@ -6,12 +6,12 @@
 
 local Config = {}
 
--- Name shown in the lobby.
--- "Mini Motorways" is a trademark of Dinosaur Polo Club.
--- Change this name (and Config.GameName) before publishing publicly.
-Config.GameName = "Mini Motorways"
+-- Nom affiché dans le menu. « Mini Motorways » est une marque de Dinosaur Polo
+-- Club : ce jeu s'en inspire (règles, ambiance) sans reprendre aucun asset
+-- d'origine. Vérifier ce point avant toute publication.
+Config.GameName = "Mini Rotorway"
 Config.Tagline = "Tracez. Reliez. Livrez."
-Config.Version = "1.5.0"
+Config.Version = "1.7.0"
 
 -- Play grid: 18 x 18 tiles of 4 studs = 72 x 72 studs. La carte garde sa
 -- taille ; ce sont les cases de visée des routes qui sont agrandies.
@@ -55,10 +55,8 @@ Config.Roads = {
 	WeekReward = 30,
 	MaxBudget = 999,
 	StartBridges = 1,
-	WeekBridges = 1,
 	MaxBridges = 14,
 	StartRoundabouts = 0,
-	WeekRoundabouts = 1,
 	MaxRoundabouts = 9,
 }
 
@@ -96,6 +94,34 @@ Config.Rewards = {
 		title = "+1 rond-point",
 		description = "Un rond-point + 20 routes pour fluidifier un carrefour.",
 	},
+	-- Amélioration de circulation : un lot plus petit qui raccourcit la
+	-- distance de sécurité des voitures (multiplicateur trafic, voir
+	-- Config.Progression.TrafficMinFactor).
+	Traffic = {
+		id = "traffic",
+		kind = "roads",
+		amount = 20,
+		trafficFactor = 0.93,
+		title = "+20 routes, trafic fluide",
+		description = "Un lot de 20 routes : les voitures se suivent de plus près.",
+	},
+}
+
+-- Progression douce : mise à l'échelle des lots de routes avec la semaine,
+-- plancher de l'amélioration de circulation et pression de surcharge.
+-- Voir SessionProgress.luau pour les formules.
+Config.Progression = {
+	-- Tous les RoadsWeeksPerStep, chaque lot gagne RoadsPerStep routes,
+	-- plafonné à RoadsMaxBonus.
+	RoadsWeeksPerStep = 3,
+	RoadsPerStep = 2,
+	RoadsMaxBonus = 10,
+	-- Distance de sécurité minimale, en fraction de Config.Traffic.CarSpacing.
+	TrafficMinFactor = 0.8,
+	-- Surcharge : le drain croît linéairement pendant OverloadRampSeconds de
+	-- surcharge critique, puis plafonne à 1 + OverloadMaxExtra.
+	OverloadRampSeconds = 120,
+	OverloadMaxExtra = 1,
 }
 
 -- Game pacing.
@@ -107,6 +133,43 @@ Config.Game = {
 	FirstSpawnDelay = 3, -- first trip from a house
 	DeliveryScore = 1,
 	DeliverySatisfaction = 2,
+	-- Score : bonus de la première livraison vers chaque magasin, et bonus
+	-- d'un trajet long (distance en cases, entre maison et magasin).
+	NewStoreBonus = 2,
+	LongTripCells = 10,
+	LongTripBonus = 1,
+}
+
+-- Horloge de jeu. Les jours et les mois se déduisent du temps simulé
+-- (Session.elapsed) : une semaine = Config.Game.WeekDuration, un mois = quatre
+-- semaines. Les vitesses sont les multiplicateurs autorisés par setSpeed.
+Config.Time = {
+	DaysPerWeek = 7,
+	WeeksPerMonth = 4,
+	MonthNames = {
+		"Janvier",
+		"Février",
+		"Mars",
+		"Avril",
+		"Mai",
+		"Juin",
+		"Juillet",
+		"Août",
+		"Septembre",
+		"Octobre",
+		"Novembre",
+		"Décembre",
+	},
+	MinSpeed = 1,
+	MaxSpeed = 3,
+	-- Pas de simulation maximal (secondes simulées). Une grosse frame est
+	-- découpée : les voitures ne sautent pas de plusieurs cases à vitesse 3.
+	MaxSimStep = 0.1,
+	-- Durée réelle maximale prise en compte pour une frame : au-delà (onglet
+	-- caché, à-coup), le temps simulé n'avance que de cette valeur.
+	MaxFrameDt = 0.1,
+	-- Intervalle réel entre deux envois de l'état au client (5 Hz).
+	StateInterval = 0.2,
 }
 
 -- Traffic and patience.
