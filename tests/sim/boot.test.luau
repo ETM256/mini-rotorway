@@ -264,7 +264,7 @@ return function(T, H)
 
 	-- Garde-fou : les bâtiments évitent les cases occupées par un arbre (avant
 	-- le correctif, ~3,5 % tombaient sur un arbre).
-	T.todo("buildings never spawn on a cell that holds a tree (needs the StoreSystem tree-cell rule: buildings PR)", function()
+	T.test("buildings never spawn on a cell that holds a tree", function()
 		local Maps, Grid = H.load("Maps"), H.load("Grid")
 		for _, map in ipairs(Maps.all()) do
 			for seed = 1, 6 do

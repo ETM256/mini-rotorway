@@ -65,6 +65,9 @@ function Session.new(player, mapId, worldIndex)
 	self.score = 0
 	self.week = 1
 	self.weekTime = 0
+	-- Temps simulé écoulé depuis le début de la partie (déjà multiplié par la
+	-- vitesse) : l'horloge unique lue par StoreSystem.
+	self.elapsed = 0
 	self.satisfaction = Config.Traffic.SatisfactionStart
 	self.budget = Config.Roads.StartBudget
 	self.bridgesLeft = Config.Roads.StartBridges
@@ -108,6 +111,7 @@ function Session:update(dt)
 
 	dt = dt * self.speed
 
+	self.elapsed += dt
 	self.weekTime += dt
 	if self.weekTime >= Config.Game.WeekDuration then
 		self.weekTime -= Config.Game.WeekDuration

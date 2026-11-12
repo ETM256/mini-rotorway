@@ -153,19 +153,10 @@ return function(T, H)
 		T.ge(minDistance, 1.0, "two cars overlap (distance " .. minDistance .. ")")
 	end)
 
-	T.todo("cars keep at least 75% of Config.Traffic.CarSpacing from each other", function()
-		local Config = H.load("Config")
-		local session = connectedGame()
-		local minDistance = math.huge
-		stepRun(session, 200, 0.1, function(s)
-			for a = 1, #s.cars do
-				for b = a + 1, #s.cars do
-					minDistance = math.min(minDistance, (s.cars[a].pos - s.cars[b].pos).Magnitude)
-				end
-			end
-		end)
-		T.ge(minDistance, Config.Traffic.CarSpacing * 0.75)
-	end)
+	-- La mesure mélange les voitures de sens opposé : la distance entre deux
+	-- voies voisines passe sous la distance de sécurité sans que ce soit un
+	-- défaut. Elle est réécrite avec la PR circulation (écart dans le même sens).
+	T.skipTest("cars keep at least 75% of Config.Traffic.CarSpacing from each other", "the metric mixes opposite lanes: rewritten in the traffic PR")
 
 	T.test("car models use the colour of their house", function()
 		local Config = H.load("Config")

@@ -94,14 +94,14 @@ return function(T, H)
 		T.le(pin.Size, 14, "a pin above 14 px looks like a prototype blob")
 	end)
 
-	T.todo("pins: StoreConfig uses the shared pin size (needs buildings PR: StoreConfig.Visual)", function()
+	T.test("pins: StoreConfig uses the shared pin size", function()
 		local Config = H.load("Config")
 		T.eq(H.load("StoreConfig").Visual.PinSize, Config.Dimensions.Pin.Size, "pin size must come from Config.Dimensions")
 	end)
 
 	-- StoreConfig.Visual.SmallSize / LargeSize servent au décalage des pins : elles
 	-- égalent l'emprise dessinée des magasins (BuildingModels : tuile x fraction).
-	T.todo("store visuals: StoreConfig sizes equal the drawn store footprint in studs (needs buildings PR: StoreConfig.Visual)", function()
+	T.test("store visuals: StoreConfig sizes equal the drawn store footprint in studs", function()
 		local Config = H.load("Config")
 		local visual = H.load("StoreConfig").Visual
 		T.near(visual.SmallSize, Config.Dimensions.Building.SmallStore * Config.Grid.TileSize, 1e-6, "small store")
