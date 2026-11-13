@@ -249,12 +249,12 @@ return function(T, H)
 		H.load("Profile").submit(player, "los_angeles", 420)
 		local store = H.W.dataStores.MiniMotorwaysV1
 		local writes = 0
-		local real = store.SetAsync
-		store.SetAsync = function(self, key, value)
+		local real = store.UpdateAsync
+		store.UpdateAsync = function(self, key, fn)
 			if key == "player_3005" then
 				writes += 1
 			end
-			return real(self, key, value)
+			return real(self, key, fn)
 		end
 
 		H.I.fire(H.I.getSignal(game.Players, "PlayerRemoving"), player)

@@ -4,21 +4,22 @@ return function(T, H)
 
 	local STORE = "MiniMotorwaysV1"
 
-	-- Remplace GetAsync / SetAsync du magasin par des versions qui attendent
+	-- Remplace GetAsync / UpdateAsync du magasin par des versions qui attendent
 	-- `latency` secondes virtuelles et comptent leurs appels.
 	local function slowStore(latency, stored)
 		local store = H.W.dataStores[STORE]
 		local counts = { get = 0, set = 0, written = nil }
+		local real = store.UpdateAsync
 		function store.GetAsync(_, _)
 			counts.get += 1
 			task.wait(latency)
 			return stored
 		end
-		function store.SetAsync(self, key, value)
+		function store.UpdateAsync(self, key, fn)
 			counts.set += 1
 			task.wait(latency)
-			self._data[key] = value
-			counts.written = value
+			counts.written = real(self, key, fn)
+			return counts.written
 		end
 		return counts
 	end
