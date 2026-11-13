@@ -311,6 +311,24 @@ function StoreSystem:findHouseSpot(store)
 	return self:pickValidCell(isValid, store.x - reach, store.y - reach, store.x + reach, store.y + reach)
 end
 
+-- Vrai si un magasin posé en (x, y) aurait au moins une place pour une
+-- première maison : mêmes règles que findHouseSpot (anneau, case libre,
+-- espacement). Le magasin n'existe pas encore, mais il ne gêne pas son anneau
+-- (MinDistanceFromStore dépasse MinDistanceFromBuilding). Balayage sans aléa :
+-- les tirages de findHouseSpot ne sont pas consommés.
+function StoreSystem:hasHouseSpot(x, y)
+	local center = { x = x, y = y }
+	local reach = math.ceil(StoreConfig.Houses.MaxDistanceFromStore)
+	for cellX = x - reach, x + reach do
+		for cellY = y - reach, y + reach do
+			if isInHouseRing(center, cellX, cellY) and self:isHouseSpotValid(cellX, cellY) then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 function StoreSystem:createHouse(store, x, y)
 	local house = self.session:createBuilding("house", x, y, store.colorIndex)
 	house.dest = store
@@ -323,7 +341,10 @@ end
 
 function StoreSystem:spawnHousesForStore(store, count)
 	for _ = 1, count do
-		if #self.session.houses >= StoreConfig.Houses.MaxHouses
+		-- Le plafond ne vise que les maisons en plus : la première maison d'un
+		-- magasin passe toujours, sinon le magasin ne serait jamais servi.
+		local hasHouse = #store.houses > 0
+		if (hasHouse and #self.session.houses >= StoreConfig.Houses.MaxHouses)
 			or #store.houses >= StoreConfig.Houses.MaxHousesPerStore
 		then
 			break
@@ -582,6 +603,11 @@ function StoreSystem:spawnStore(initial)
 	end
 	local x, y = self:findStoreSpot()
 	if not x then
+		return false
+	end
+	-- Un magasin sans aucune place pour une maison serait injouable : on
+	-- l'écarte, et spawnClock réessaie après RetryDelay avec un nouveau tirage.
+	if not self:hasHouseSpot(x, y) then
 		return false
 	end
 

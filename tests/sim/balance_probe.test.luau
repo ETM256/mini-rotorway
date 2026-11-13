@@ -7,9 +7,9 @@
 -- première proposition de semaine. Mesures de la vague 4 (graines 1 à 3,
 -- 900 s max, relevées par une exécution réelle de ce fichier) :
 --   sans route : 137 à 141 s sur les deux cartes (surcharge, semaine 3) ;
---   bot los_angeles : 336 à 435 s ; bot tokyo : 460 à 563 s ;
+--   bot los_angeles : 336 à 454 s ; bot tokyo : 460 à 563 s ;
 --   les six parties du bot finissent par surcharge, aucune par embouteillage ;
---   voitures bloquées : 179 s au total (143 s pour tokyo graine 1 seule).
+--   voitures bloquées : 184 s au total (143 s pour tokyo graine 1 seule).
 -- Avant la correction du trafic (réservations par paires de cases : deux
 -- voitures de sens opposés sur deux cases voisines se bloquaient pour de bon),
 -- 6 parties sur 12 étaient perdues par embouteillage. Depuis (réservation par

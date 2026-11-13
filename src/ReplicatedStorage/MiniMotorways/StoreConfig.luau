@@ -106,6 +106,8 @@ StoreConfig.Houses = {
 	StartHouses = 3,
 	HousesPerStore = 2,
 	MaxHousesPerStore = 3,
+	-- Plafond des maisons, hors première maison de chaque magasin : celle-ci
+	-- passe toujours, sinon le magasin ne serait jamais servi.
 	MaxHouses = 16,
 	SpawnInterval = 18,
 	FirstSpawnDelay = 26,
