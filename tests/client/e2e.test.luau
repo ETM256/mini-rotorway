@@ -384,6 +384,79 @@ return function(T, H)
 		T.eq(#H.find(workspace.MMWorlds, { class = "BasePart" }), 0, "the session world is destroyed")
 	end)
 
+	-- Le client ne redemande le profil qu'une fois, à son chargement : le score
+	-- d'une partie terminée doit tout de même atteindre le lobby.
+	T.test("the best score of a finished game reaches the lobby once back in the menu", function()
+		H.runScript("Bootstrap")
+		H.asClient()
+		H.runScript("Main")
+		H.advance(0.1)
+		-- La Session créée par StartGame est capturée pour y tracer des routes.
+		local Session = H.load("Session")
+		local original = Session.new
+		local session = nil
+		Session.new = function(...)
+			session = original(...)
+			return session
+		end
+		H.fireServer("StartGame", "tokyo")
+		H.advance(0.5)
+		Session.new = original
+		T.ok(session, "the server built the session")
+		session.budget = 400
+		local store = session.destinations[1]
+		for _, house in ipairs(session.houses) do
+			H.connect(session, house, store)
+		end
+		for _ = 1, 20 do
+			H.advance(60, { step = 0.2 })
+			local state = H.lastSent("State")
+			if state.awaitingChoice then
+				H.fireServer("ChooseReward", H.lastSent("WeekChoice").options[1].id)
+			end
+			if state.over then
+				break
+			end
+		end
+		T.ok(H.lastSent("State").over, "the game must end")
+		local score = H.lastSent("GameOver").score
+		T.gt(score, 0, "the finished game has a score")
+		-- Une demande au chargement (après 1 s), une seule de plus à la fin de la
+		-- partie ; la réponse du serveur contient déjà le score de cette partie.
+		T.eq(#H.sent("RequestProfile", "toServer"), 2, "the game over asks for the profile exactly once")
+		T.eq(H.lastSent("Profile").tokyo, score, "the profile sent after the game holds its score")
+
+		-- Le bouton « Menu principal » visible est celui de l'écran de fin (le menu pause
+		-- contient un bouton du même nom, masqué).
+		local function visibleThrough(node, root)
+			while node and node ~= root do
+				if node:IsA("GuiObject") and not node.Visible then
+					return false
+				end
+				node = node.Parent
+			end
+			return true
+		end
+		local hud = H.localPlayer.PlayerGui.MM_HUD
+		local menu = nil
+		for _, button in ipairs(H.find(hud, { class = "GuiButton", text = "Menu principal" })) do
+			if visibleThrough(button, hud) then
+				menu = button
+			end
+		end
+		T.ok(menu, "the game over card offers Menu principal")
+		H.click(menu)
+		H.advance(0.5)
+		T.ok(H.localPlayer.PlayerGui.MM_Lobby.Enabled, "the lobby is back")
+		local shown = false
+		for _, label in ipairs(H.find(H.localPlayer.PlayerGui.MM_Lobby, { class = "TextLabel", text = "Meilleur : " })) do
+			if label.Text == "Meilleur : " .. tostring(score) then
+				shown = true
+			end
+		end
+		T.ok(shown, "the Tokyo card shows Meilleur : " .. tostring(score) .. " after the game")
+	end)
+
 	T.test("oversized or malformed requests are ignored by the server", function()
 		boot()
 		local huge = {}
