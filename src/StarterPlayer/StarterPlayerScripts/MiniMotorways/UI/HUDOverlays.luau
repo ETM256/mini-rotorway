@@ -66,36 +66,15 @@ local STAT_ROWS = {
 	{ "weeksCompleted", "Semaines terminées" },
 }
 
--- Valeur numérique sûre : nil, NaN et infini donnent la valeur de repli.
-local function numberOr(value, fallback)
-	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
-		return fallback
-	end
-	return value
-end
+-- Valeur numérique sûre et entier formaté : définis dans Theme, partagés avec le lobby.
+local numberOr = Theme.numberOr
+local formatNumber = Theme.formatNumber
 
 local function textOr(value, fallback)
 	if type(value) == "string" and value ~= "" then
 		return value
 	end
 	return fallback
-end
-
--- Entier avec espaces de milliers : 1 234 567.
-local function formatNumber(value)
-	local n = math.floor(numberOr(value, 0))
-	local sign = ""
-	if n < 0 then
-		sign = "-"
-		n = -n
-	end
-	local digits = tostring(n)
-	local groups = ""
-	while #digits > 3 do
-		groups = " " .. string.sub(digits, -3) .. groups
-		digits = string.sub(digits, 1, -4)
-	end
-	return sign .. digits .. groups
 end
 
 -- Durée mm:ss. Les minutes ne se bornent pas à 59 : 3600 s donnent 60:00.

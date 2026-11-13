@@ -632,4 +632,32 @@ function Theme.grid(parent, step, color, transparency)
 	return container
 end
 
+-- Valeur numérique sûre : nil, NaN et infini donnent la valeur de repli.
+function Theme.numberOr(value, fallback)
+	if type(value) ~= "number" or value ~= value or value == math.huge or value == -math.huge then
+		return fallback
+	end
+	return value
+end
+
+-- Entier avec espaces de milliers : 1 234 567. Une valeur absente ou invalide
+-- compte pour 0 ; le nombre est arrondi à l'entier inférieur. Le HUD (fin de
+-- partie) et le lobby (records) l'utilisent : un même score s'écrit pareil dans
+-- les deux.
+function Theme.formatNumber(value)
+	local n = math.floor(Theme.numberOr(value, 0))
+	local sign = ""
+	if n < 0 then
+		sign = "-"
+		n = -n
+	end
+	local digits = tostring(n)
+	local groups = ""
+	while #digits > 3 do
+		groups = " " .. string.sub(digits, -3) .. groups
+		digits = string.sub(digits, 1, -4)
+	end
+	return sign .. digits .. groups
+end
+
 return Theme

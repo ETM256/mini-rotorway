@@ -1773,7 +1773,7 @@ function Lobby:setProfile(profile)
 			bestScore = best
 			bestMap = map
 		end
-		local text = best > 0 and tostring(best) or NO_SCORE
+		local text = best > 0 and Theme.formatNumber(best) or NO_SCORE
 		local entry = self.cards[map.id]
 		if entry then
 			entry.bestLabel.Text = "Meilleur : " .. text
@@ -1786,7 +1786,7 @@ function Lobby:setProfile(profile)
 
 	local stats = self.statsLabels
 	if stats then
-		stats.total.Text = tostring(total)
+		stats.total.Text = Theme.formatNumber(total)
 		stats.played.Text = tostring(played)
 		stats.bestMap.Text = bestMap and bestMap.name or NO_SCORE
 		stats.average.Text = played > 0 and string.format("%.1f", total / played) or NO_SCORE

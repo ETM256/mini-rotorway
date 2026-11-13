@@ -191,6 +191,17 @@ return function(T, H)
 		lobby:destroy()
 	end)
 
+	T.test("large scores are grouped with spaces, as on the game over card", function()
+		local Maps = H.load("Maps")
+		local lobby = newLobby()
+		local first, second = Maps.all()[1], Maps.all()[2]
+		lobby:setProfile({ [first.id] = 1000000, [second.id] = 12345 })
+		T.eq(lobby.cards[first.id].bestLabel.Text, "Meilleur : 1 000 000", "carte")
+		T.eq(lobby.recordLabels[second.id].Text, "12 345", "palmarès")
+		T.eq(lobby.statsLabels.total.Text, "1 012 345", "total")
+		lobby:destroy()
+	end)
+
 	T.test("an empty profile shows dashes and zero", function()
 		local lobby = newLobby()
 		lobby:setProfile({})
