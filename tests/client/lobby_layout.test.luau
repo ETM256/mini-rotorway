@@ -71,6 +71,30 @@ return function(T, H)
 		end
 	end)
 
+	T.test("the six menu entries fit the screen and sit under the title on short phones", function()
+		local lobby, Lobby = newLobby()
+		lobby:show()
+		-- 568x320 : iPhone SE couché, le plus court des téléphones visés.
+		local SHORT_PHONES = { { 844, 390 }, { 780, 360 }, { 740, 360 }, { 667, 375 }, { 640, 360 }, { 568, 320 } }
+		for _, res in ipairs(SHORT_PHONES) do
+			local w, h = res[1], res[2]
+			local name = label(w, h)
+			H.setViewport(w, h)
+			lobby:updateResponsive()
+			local L = Lobby.layoutFor(w, h, lobby.titleWidth)
+			T.le(L.menuY * h + L.menuHeight, h, "menu dans l'écran " .. name)
+			-- Hauteur nominale du titre : son corps (92), comme la mesure du harnais.
+			T.le(L.titleY * h + L.titleScale * 92, L.menuY * h, "menu sous le titre " .. name)
+			-- L'instance applique l'écart de la mise en page : les entrées et leurs écarts remplissent le menu.
+			local total = (#lobby.menuItems - 1) * lobby.menuLayout.Padding.Offset
+			for _, item in ipairs(lobby.menuItems) do
+				total += item.button.Size.Y.Offset
+			end
+			T.near(total, L.menuHeight, 0.001, "entrées et écarts remplissent le menu " .. name)
+		end
+		lobby:destroy()
+	end)
+
 	T.test("the title and its pastilles stay on screen at every resolution", function()
 		H.asClient()
 		local Lobby = H.load("Lobby")
