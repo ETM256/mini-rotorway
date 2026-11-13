@@ -3,8 +3,9 @@
 // Équivalent de tools/build.ps1 (rojo build + fix-source-tags.js) pour les
 // machines où Rojo n'est pas installé. Les services statiques (Lighting,
 // Players, SoundService, Workspace) sont conservés tels quels depuis le
-// fichier existant ; seuls ReplicatedStorage, ServerScriptService et
-// StarterPlayer sont reconstruits depuis default.project.json et src/.
+// fichier de sortie s'il existe, sinon depuis MiniMotorwaysRBX.rbxlx ; seuls
+// ReplicatedStorage, ServerScriptService et StarterPlayer sont reconstruits
+// depuis default.project.json et src/.
 //
 // usage : node tools/build-rbxlx.js [sortie.rbxlx]
 const fs = require("fs");
@@ -13,12 +14,15 @@ const path = require("path");
 const root = path.resolve(__dirname, "..");
 const outPath = path.resolve(root, process.argv[2] || "MiniMotorwaysRBX.rbxlx");
 const project = JSON.parse(fs.readFileSync(path.join(root, "default.project.json"), "utf8"));
-const previous = fs.readFileSync(outPath, "utf8");
+// Gabarit des services statiques : la sortie si elle existe déjà, sinon le
+// .rbxlx commité (sans quoi une sortie vers un nouveau fichier échoue).
+const templatePath = fs.existsSync(outPath) ? outPath : path.join(root, "MiniMotorwaysRBX.rbxlx");
+const previous = fs.readFileSync(templatePath, "utf8");
 
 // Bloc <Item class="X" ...> ... </Item> de premier niveau (indentation 2).
 function topLevelBlock(xml, className) {
 	const start = xml.indexOf(`\n  <Item class="${className}" `);
-	if (start < 0) throw new Error(`Bloc ${className} introuvable dans ${outPath}`);
+	if (start < 0) throw new Error(`Bloc ${className} introuvable dans ${templatePath}`);
 	const end = xml.indexOf("\n  </Item>", start);
 	return xml.slice(start + 1, end + "\n  </Item>".length) + "\n";
 }
