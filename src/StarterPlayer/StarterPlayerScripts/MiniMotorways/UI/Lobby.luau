@@ -30,9 +30,11 @@ local CARD_HEIGHT = 470
 local CARD_GAP = Theme.Space.XL
 local MIN_CARD_SCALE = 0.4
 
--- Seuils d'écran : portrait (téléphone debout) et hauteur courte (paysage).
+-- Seuils d'écran : portrait (téléphone debout), hauteur courte (paysage) et
+-- hauteur très courte (iPhone SE couché, 568x320).
 local PORTRAIT_MIN_WIDTH = 760
 local SHORT_HEIGHT = 700
+local TINY_HEIGHT = 360
 
 -- Espaces : tous viennent de Theme.Space.
 local SECTION_GAP = Theme.Space.M
@@ -40,7 +42,11 @@ local HEADER_GAP = Theme.Space.S
 local EDGE_MARGIN = Theme.Space.L
 
 local MENU_GAP = Theme.Space.M
-local MENU_ITEM_COUNT = 5
+-- Six entrées doivent tenir : l'écart entre elles passe à S sur écran court,
+-- à XS sur écran très court.
+local MENU_GAP_SHORT = Theme.Space.S
+local MENU_GAP_TINY = Theme.Space.XS
+local MENU_ITEM_COUNT = 6
 local TITLE_SIZE = 92
 -- Le titre se réduit pour rester à l'écran, sans descendre sous ce facteur.
 local TITLE_MIN_SCALE = 0.3
@@ -263,6 +269,14 @@ function Lobby.layoutFor(width, height, titleWidth)
 	local cardScale = math.clamp((scrollerHeight - EDGE_MARGIN) / CARD_HEIGHT, MIN_CARD_SCALE, 1)
 
 	local buttonHeight = math.clamp(height * 0.075, 30, 52)
+	-- Sur écran court, le menu remonte et ses écarts se resserrent pour rester
+	-- sous le titre et dans l'écran.
+	local menuGap = MENU_GAP
+	if height < TINY_HEIGHT then
+		menuGap = MENU_GAP_TINY
+	elseif short then
+		menuGap = MENU_GAP_SHORT
+	end
 	local infoSize = portrait and 60 or math.clamp(height * 0.068, 52, 74)
 	local railTop = math.max(12, math.min(height * 0.34, height - RAIL_HEIGHT - 12))
 
@@ -280,9 +294,10 @@ function Lobby.layoutFor(width, height, titleWidth)
 		titleY = portrait and 0.115 or 0.165,
 		titleScale = titleScale,
 		menuX = portrait and 0.08 or 0.21,
-		menuY = portrait and 0.36 or 0.43,
+		menuY = (portrait or short) and 0.36 or 0.43,
 		menuWidth = portrait and 0.84 or 0.19,
-		menuHeight = MENU_ITEM_COUNT * buttonHeight + (MENU_ITEM_COUNT - 1) * MENU_GAP,
+		menuGap = menuGap,
+		menuHeight = MENU_ITEM_COUNT * buttonHeight + (MENU_ITEM_COUNT - 1) * menuGap,
 		buttonHeight = buttonHeight,
 		infoSize = infoSize,
 		infoX = portrait and 0.94 or 0.955,
@@ -862,24 +877,30 @@ function Lobby:buildMain(page)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	layout.Parent = menu
+	self.menuLayout = layout
 
-	-- Entrées du menu (9.2) : jouer, palmarès, statistiques, réglages, quitter.
-	-- Les largeurs décalées reprennent le rythme de la capture de référence.
+	-- Entrées du menu (9.2) : jouer, garage, palmarès, statistiques, réglages, quitter.
+	-- Le rail de la page des cartes est caché sur téléphone : le garage doit donc
+	-- aussi être dans le menu. Les largeurs décalées reprennent le rythme de la
+	-- capture de référence.
 	self:addMenuItem(menu, "Jouer", 0.72, 1, function()
 		if self.callbacks.onPlay then
 			self.callbacks.onPlay()
 		end
 	end)
-	self:addMenuItem(menu, "Palmarès", 0.80, 2, function()
+	self:addMenuItem(menu, "Garage", 0.80, 2, function()
+		self:showGarage()
+	end)
+	self:addMenuItem(menu, "Palmarès", 0.80, 3, function()
 		self:showRecords()
 	end)
-	self:addMenuItem(menu, "Statistiques", 0.92, 3, function()
+	self:addMenuItem(menu, "Statistiques", 0.92, 4, function()
 		self:showStats()
 	end)
-	self:addMenuItem(menu, "Options", 0.84, 4, function()
+	self:addMenuItem(menu, "Options", 0.84, 5, function()
 		self:showOptions()
 	end)
-	self:addMenuItem(menu, "Sortir", 0.68, 5, function()
+	self:addMenuItem(menu, "Sortir", 0.68, 6, function()
 		if self.callbacks.onQuit then
 			self.callbacks.onQuit()
 		end
@@ -1634,6 +1655,7 @@ function Lobby:updateResponsive()
 
 	self.menu.Position = UDim2.fromScale(layout.menuX, layout.menuY)
 	self.menu.Size = UDim2.new(layout.menuWidth, 0, 0, layout.menuHeight)
+	self.menuLayout.Padding = UDim.new(0, layout.menuGap)
 	for _, item in ipairs(self.menuItems) do
 		item.button.Size = UDim2.new(item.width, 0, 0, layout.buttonHeight)
 	end

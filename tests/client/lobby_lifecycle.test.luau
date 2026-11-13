@@ -171,6 +171,36 @@ return function(T, H)
 		lobby:destroy()
 	end)
 
+	T.test("the garage opens from the main menu, phones included", function()
+		-- Le rail (seule autre entrée vers le garage) est caché en portrait et sur
+		-- les écrans étroits : le menu principal doit donc offrir le garage partout.
+		local resolutions = {
+			{ 1920, 1080 },
+			{ 1366, 768 },
+			{ 844, 390 },
+			{ 780, 360 },
+			{ 740, 360 },
+			{ 667, 375 },
+			{ 568, 320 },
+			{ 390, 844 },
+		}
+		for _, res in ipairs(resolutions) do
+			local name = string.format("%dx%d", res[1], res[2])
+			H.reset()
+			local lobby = newLobby()
+			H.setViewport(res[1], res[2])
+			lobby:show()
+			local garage = buttonWithText(lobby.menu, "Garage")
+			T.ok(garage, "entrée Garage dans le menu principal " .. name)
+			-- H.click ignore Visible : le bouton doit aussi être affiché, dans une page affichée.
+			T.ok(lobby.mainPage.Visible and lobby.menu.Visible and garage.Visible, "entrée Garage affichée " .. name)
+			T.falsy(lobby.garageOverlay.Visible, "le garage est fermé avant le clic " .. name)
+			H.click(garage)
+			T.ok(lobby.garageOverlay.Visible, "le garage s'ouvre " .. name)
+			lobby:destroy()
+		end
+	end)
+
 	T.test("a full profile fills every card, record and statistic", function()
 		local Maps = H.load("Maps")
 		local lobby = newLobby()
