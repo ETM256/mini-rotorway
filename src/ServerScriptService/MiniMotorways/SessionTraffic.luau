@@ -487,15 +487,22 @@ return function(Session)
 	end
 
 	-- Chemin restant de la voiture. Une voiture déjà sur le réseau repart de la
-	-- dernière case atteinte ; sinon elle part du connecteur de sa maison.
+	-- dernière case atteinte ; sinon elle part du connecteur de sa maison. Si cette
+	-- case a disparu alors que la voiture est encore dans la case de son bâtiment de
+	-- départ (ou une case voisine), elle repart d'un autre connecteur de ce bâtiment.
 	function Session:findPath(car)
 		local origin, goal = carEnds(car)
 		local fromKey = car.lastKey
 		if fromKey then
-			if not self.roads[fromKey] then
+			if self.roads[fromKey] then
+				return self:findRoute(origin, goal, fromKey)
+			end
+			local cx, cy = Grid.cellFromWorld(self.origin, car.center)
+			if math.abs(cx - origin.x) > 1 or math.abs(cy - origin.y) > 1 then
 				return nil
 			end
-			return self:findRoute(origin, goal, fromKey)
+			-- La case disparue est oubliée : la voiture repart d'un connecteur.
+			car.lastKey = nil
 		end
 		return self:findRoute(origin, goal, nil)
 	end
