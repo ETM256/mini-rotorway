@@ -346,6 +346,9 @@ remote("WeekChoice").OnClientEvent:Connect(function(data)
 end)
 
 remote("GameOver").OnClientEvent:Connect(function(data)
+	-- Le serveur vient d'enregistrer le score de cette partie : on redemande le
+	-- profil pour que le lobby (meilleur score, palmarès, statistiques) soit à jour.
+	remote("RequestProfile"):FireServer()
 	hud:showGameOver(data)
 	input:setEnabled(false)
 end)
