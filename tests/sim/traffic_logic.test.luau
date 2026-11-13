@@ -433,6 +433,44 @@ return function(T, H)
 		T.falsy(session.intersectionReservations[ring[2]], "the cell ahead is given back")
 	end)
 
+	-- Un trajet de retour replanifié avant d'avoir atteint son premier nœud (le
+	-- connecteur du magasin, déjà tenu) ne doit pas répéter ce nœud : sinon la
+	-- voiture le libère en y entrant, alors qu'elle s'y trouve encore.
+	T.test("a return car replanned before its first node never repeats it or frees it under itself", function()
+		local Grid = H.load("Grid")
+		local session = connectedGame()
+		local car = nil
+		runUntil(session, 200, function(s)
+			for _, candidate in ipairs(s.cars) do
+				if not car and candidate.state == "back" and candidate.index == 1 then
+					car = candidate
+				end
+			end
+			return car ~= nil
+		end)
+		T.ok(car ~= nil, "a car on its way back is needed")
+		if not car then
+			return
+		end
+		local first = car.path[1]
+		T.eq(car.lastKey, first, "the car has not reached its first return node yet")
+		-- Le réseau change : la voiture est replanifiée au pas suivant.
+		session.roadVersion += 1
+		stepRun(session, 0.05, 0.05)
+		T.eq(car.roadVersion, session.roadVersion, "the car was replanned")
+		T.ok(car.path ~= nil, "the return route still exists")
+		for i = 2, #car.path do
+			T.ne(car.path[i], car.path[i - 1], "the first node is repeated at " .. i)
+		end
+		-- Tant que la voiture est sur cette case, elle la garde réservée.
+		stepRun(session, 3, 0.05, function(s)
+			local x, y = Grid.cellFromWorld(s.origin, car.center)
+			if Grid.key(x, y) == first then
+				T.eq(s.intersectionReservations[first], car, "the car gives up the node it is standing on")
+			end
+		end)
+	end)
+
 	-- 7 ---------------------------------------------------------------------------
 
 	T.test("a parked car stays inside its building cell, never over the connector cell", function()
