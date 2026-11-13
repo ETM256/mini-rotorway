@@ -12,8 +12,10 @@
 	mouvement rapide est comblé case par case, et revenir sur une case du
 	tracé retire les cases posées après elle. Une case refusée coupe le
 	tracé : jamais envoyée, elle sépare deux requêtes. Le client n'envoie
-	rien avant le relâchement ; Échap ou un changement d'outil annule sans
-	rien consommer. La validation finale et les ressources restent au serveur.
+	rien avant le relâchement (routes, effacement, et rond-point au doigt,
+	posé sur la case de l'appui) ; seul le rond-point à la souris se pose au
+	clic. Échap ou un changement d'outil annule sans rien consommer. La
+	validation finale et les ressources restent au serveur.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -145,6 +147,8 @@ function InputController.new(callbacks)
 	self.gridPinned = false
 	self.touches = {}
 	self.gesture = nil
+	-- Rond-point posé au doigt, pas encore relâché : { touch, cell }.
+	self.pendingRoundabout = nil
 	-- Clic milieu tenu (déplacement de vue, dans Main) : aucun tracé ne démarre.
 	self.middleDown = false
 
@@ -325,7 +329,11 @@ function InputController:pressTool(mouseButton, touch, position)
 		self:beginDrag("camera", mouseButton, touch, nil)
 	elseif self.tool == "roundabout" then
 		local cell = self:cellAt(position)
-		if cell and self.callbacks.onRoundabout then
+		if cell and touch ~= nil then
+			-- Au doigt, le rond-point attend le relâchement : un second doigt
+			-- (pincement, panoramique) ne consomme rien. La souris place au clic.
+			self.pendingRoundabout = { touch = touch, cell = cell }
+		elseif cell and self.callbacks.onRoundabout then
 			self.callbacks.onRoundabout(cell[1], cell[2])
 		end
 	elseif self.tool == "erase" then
@@ -653,6 +661,8 @@ end
 
 -- Annulation (Échap, changement d'outil, fenêtre perdue) : rien n'est envoyé.
 function InputController:cancelDrag()
+	-- Un rond-point en attente (doigt posé) s'annule avec le geste.
+	self.pendingRoundabout = nil
 	if not self.dragging then
 		return
 	end
@@ -669,7 +679,8 @@ function InputController:touchBegan(input)
 	-- pas bloquer le tracé pour le reste de la partie : on l'oublie ici.
 	self:forgetEndedTouches()
 	-- Un doigt de plus pendant qu'un autre est suivi : geste de caméra, jamais
-	-- un tracé. Le tracé du premier doigt est annulé, sans rien envoyer.
+	-- un tracé. Le tracé du premier doigt, ou son rond-point en attente, est
+	-- annulé sans rien envoyer.
 	if countEntries(self.touches) > 0 then
 		self.touches[input] = pointerFrom(input)
 		self:cancelDrag()
@@ -710,6 +721,15 @@ function InputController:touchEnded(input)
 	end
 	if self.dragging and self.dragTouch == input then
 		self:endDrag()
+	end
+	-- Rond-point au doigt : posé au relâchement du doigt qui l'a visé (un second
+	-- doigt l'a déjà annulé, voir touchBegan).
+	local pending = self.pendingRoundabout
+	if pending and pending.touch == input then
+		self.pendingRoundabout = nil
+		if self.callbacks.onRoundabout then
+			self.callbacks.onRoundabout(pending.cell[1], pending.cell[2])
+		end
 	end
 end
 
@@ -853,9 +873,7 @@ function InputController:setTool(tool)
 	if self.destroyed then
 		return
 	end
-	if self.dragging then
-		self:cancelDrag()
-	end
+	self:cancelDrag()
 	self.tool = tool
 	self.ghostKey = nil
 	if tool ~= "roundabout" then
@@ -937,6 +955,7 @@ function InputController:destroy()
 	self:resetStroke()
 	self.touches = {}
 	self.gesture = nil
+	self.pendingRoundabout = nil
 	self.preview:destroy()
 	self.ghost:Destroy()
 	self.ghost = nil
