@@ -347,6 +347,110 @@ return function(T, H)
 		end
 	end)
 
+	T.test("plafond : un magasin créé après le plafond garde quand même sa première maison", function()
+		local Houses = StoreConfig.Houses
+		local system, session = newSystem()
+		-- Plateau plus grand : sur 18 cases, les six magasins ne tiendraient pas.
+		session.size = 40
+		for _ = 1, 5 do
+			T.ok(system:spawnStore(false), "store setup")
+		end
+		-- 3 + 5 × 2 maisons, puis trois compléments : le plafond est atteint.
+		for _ = 1, Houses.MaxHouses - #session.houses do
+			T.ok(system:spawnHouse(), "a house slot must remain under the cap")
+		end
+		T.eq(#session.houses, Houses.MaxHouses, "the cap is reached")
+
+		T.ok(system:spawnStore(false), "a late store is still created")
+		local late = session.destinations[#session.destinations]
+		-- HousesPerStore vaut 2 : la seconde maison est refusée par le plafond.
+		T.eq(#late.houses, 1, "a late store gets its first house only")
+		T.eq(#session.houses, Houses.MaxHouses + 1, "only the first house goes over the cap")
+		T.falsy(system:spawnHouse(), "the cap still limits the extra houses")
+	end)
+
+	T.test("emplacement sans place pour une maison : aucun magasin créé", function()
+		local system, session = newSystem()
+		local stores = #session.destinations
+		local buildings = #session.buildingList
+		local spawned = session.stats.storesSpawned
+		-- Plus aucune case d'anneau libre : le magasin serait injouable.
+		system.hasHouseSpot = function()
+			return false
+		end
+		T.falsy(system:spawnStore(false), "no store without room for its first house")
+		T.eq(#session.destinations, stores, "no store was created")
+		T.eq(#session.buildingList, buildings, "no building was created")
+		T.eq(session.stats.storesSpawned, spawned, "the spawn is not counted")
+	end)
+
+	T.test("emplacement refusé : l'horloge réessaie après RetryDelay et crée alors le magasin", function()
+		local system, session = newSystem({ random = seededRandom(7) })
+		local stores = #session.destinations
+		system.hasHouseSpot = function()
+			return false
+		end
+		system.spawnClock = 0
+		system:update(0.1)
+		T.eq(#session.destinations, stores, "no store without room for a house")
+		T.near(system.spawnClock, StoreConfig.Spawn.RetryDelay, 1e-9, "a new try is scheduled")
+		-- La méthode de la classe reprend la main : la tentative suivante réussit.
+		system.hasHouseSpot = nil
+		system:update(StoreConfig.Spawn.RetryDelay)
+		T.eq(#session.destinations, stores + 1, "the next try creates the store")
+		T.ge(#session.destinations[#session.destinations].houses, 1, "with its first house")
+	end)
+
+	-- hasHouseSpot tourne avant la création du magasin : il doit donner le même
+	-- verdict que findHouseSpot une fois le magasin posé, sans tirer au sort.
+	T.test("hasHouseSpot : même verdict que findHouseSpot une fois le magasin posé, sans aléa", function()
+		local Houses = StoreConfig.Houses
+		T.ge(Houses.MinDistanceFromStore, Houses.MinDistanceFromBuilding, "the store keeps clear of its own ring")
+		local withSpot, withoutSpot = 0, 0
+		-- `blocked` : part des cases rendues inutilisables (eau fictive), de moitié
+		-- à presque toutes, pour obtenir des plateaux avec et sans place.
+		for _, blocked in ipairs({ 0.5, 0.8, 0.9, 0.95, 0.97 }) do
+			for trial = 1, 60 do
+				local rng = seededRandom(trial * 17 + math.floor(blocked * 100))
+				local session = fakeSession({ random = rng })
+				local system = StoreSystem.new(session)
+				for x = 0, session.size - 1 do
+					for y = 0, session.size - 1 do
+						if rng.random() < 0.02 then
+							session:createBuilding("house", x, y, 1)
+						end
+					end
+				end
+				local x = rng.random(1, session.size - 2)
+				local y = rng.random(1, session.size - 2)
+				if system:isStoreSpotValid(x, y) then
+					for cellX = 0, session.size - 1 do
+						for cellY = 0, session.size - 1 do
+							local key = cellX .. ":" .. cellY
+							if not session.buildings[key] and (cellX ~= x or cellY ~= y) and rng.random() < blocked then
+								session.buildings[key] = { x = cellX, y = cellY }
+							end
+						end
+					end
+					local label = string.format("bloqué %.2f essai %d (%d, %d)", blocked, trial, x, y)
+					local before = rng.calls()
+					local predicted = system:hasHouseSpot(x, y)
+					T.eq(rng.calls(), before, label .. " : hasHouseSpot ne tire rien au sort")
+					local store = session:createBuilding("store", x, y, 1, "small")
+					store.houses = {}
+					T.eq(predicted, system:findHouseSpot(store) ~= nil, label .. " : même verdict")
+					if predicted then
+						withSpot += 1
+					else
+						withoutSpot += 1
+					end
+				end
+			end
+		end
+		T.ge(withSpot, 20, "enough boards with a spot: " .. withSpot)
+		T.ge(withoutSpot, 20, "enough boards without a spot: " .. withoutSpot)
+	end)
+
 	T.test("palette : jamais plus de magasins que de couleurs, couleurs uniques", function()
 		local Config = H.load("Config")
 		local system, session = newSystem()

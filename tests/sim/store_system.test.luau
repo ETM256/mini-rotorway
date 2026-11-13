@@ -14,7 +14,17 @@ return function(T, H)
 			seenColours[store.colorIndex] = true
 		end
 		T.le(#session.destinations, StoreConfig.Spawn.MaxStores, label .. ": too many stores")
-		T.le(#session.houses, StoreConfig.Houses.MaxHouses, label .. ": too many houses")
+		-- Tout magasin a sa première maison, qui peut dépasser le plafond. Une
+		-- maison en plus n'est posée que sous le plafond, alors qu'un magasin a déjà
+		-- sa première maison : les maisons en plus restent sous MaxHouses.
+		local withHouse = 0
+		for _, store in ipairs(session.destinations) do
+			if #store.houses > 0 then
+				withHouse += 1
+			end
+		end
+		T.eq(withHouse, #session.destinations, label .. ": a store without house")
+		T.lt(#session.houses - withHouse, StoreConfig.Houses.MaxHouses, label .. ": too many extra houses")
 
 		local housesOf = {}
 		for _, house in ipairs(session.houses) do
@@ -83,6 +93,46 @@ return function(T, H)
 			session:destroy()
 		end
 		T.ok(treesSeen > 0, "the trees were not found in any map: the test checks nothing")
+	end)
+
+	-- Un magasin sans maison ne peut jamais être servi : la partie devient
+	-- perdue par surcharge. La jauge est remise à niveau à chaque seconde pour
+	-- que la surcharge ne termine pas la partie avant les dix minutes.
+	T.test("maisons : chaque magasin garde au moins une maison pendant dix minutes simulées", function()
+		local lateStores = 0
+		for _, map in ipairs(Maps.all()) do
+			for seed = 1, 4 do
+				H.reset()
+				H.seed(seed)
+				local session = H.newSession(map.id)
+				while session.elapsed < 600 and not session.over do
+					session.satisfaction = 1e9
+					local houses, stores = #session.houses, #session.destinations
+					H.runSession(session, 1, 0.25)
+					-- Plafond atteint : seule la première maison d'un nouveau magasin
+					-- peut encore s'ajouter.
+					if houses >= StoreConfig.Houses.MaxHouses then
+						if #session.destinations > stores then
+							lateStores += 1
+						end
+						T.le(
+							#session.houses - houses,
+							#session.destinations - stores,
+							string.format("%s graine %d : maison en plus au plafond à t=%d", map.id, seed, math.floor(session.elapsed))
+						)
+					end
+				end
+				for index, store in ipairs(session.destinations) do
+					T.ge(
+						#store.houses,
+						1,
+						string.format("%s graine %d : magasin %d sans maison à t=%d", map.id, seed, index, math.floor(session.elapsed))
+					)
+				end
+				session:destroy()
+			end
+		end
+		T.ok(lateStores > 0, "no store was created after the cap: the test checks nothing about it")
 	end)
 
 	T.test("groupes : dans une vraie partie, des maisons se regroupent autour de leur magasin", function()
