@@ -18,10 +18,12 @@ if (-not (Test-Path $rojo)) {
 
 $outPath = Join-Path $root $Output
 & $rojo build (Join-Path $root "default.project.json") -o $outPath
+if ($LASTEXITCODE -ne 0) { throw "rojo build a echoue (code $LASTEXITCODE)" }
 
 # Roblox Studio serialise les sources en ProtectedString : on aligne le fichier.
 if (Get-Command node -ErrorAction SilentlyContinue) {
     node (Join-Path $PSScriptRoot "fix-source-tags.js") $outPath
+    if ($LASTEXITCODE -ne 0) { throw "fix-source-tags.js a echoue (code $LASTEXITCODE)" }
 } else {
     Write-Host "Node introuvable : le fichier reste lisible, mais garde ses balises <string>."
 }
