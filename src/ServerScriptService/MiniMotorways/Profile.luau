@@ -7,6 +7,9 @@
 	  - un profil dont la lecture a échoué n'est jamais écrit : une table vide
 	    écrite par-dessus les vrais scores les effacerait. Il est relu plus tard
 	    et les deux copies sont fusionnées (meilleur score par carte) ;
+	  - l'écriture est une fusion (UpdateAsync) : le meilleur score par carte
+	    gagne entre le magasin et le cache, même si un autre serveur a écrit
+	    entre-temps. Seule une réinitialisation écrase le magasin ;
 	  - submit ne bloque jamais : il est appelé à la fin d'une partie, dans le
 	    Heartbeat. La sauvegarde a lieu à intervalle régulier, à la sortie du
 	    joueur et à la fermeture du serveur.
@@ -47,7 +50,7 @@ do
 	end
 end
 
--- cache[userId] = { userId, key, records, loaded, dirty, saving, departed }
+-- cache[userId] = { userId, key, records, loaded, dirty, saving, overwrite, departed }
 local cache = {}
 -- Lectures en cours (userId -> true). Le profil est demandé à l'arrivée du
 -- joueur et au lancement de sa première partie : sans cela, deux lectures
@@ -147,9 +150,27 @@ reloadUntilLoaded = function(entry)
 	end
 end
 
--- Écrit une entrée modifiée, avec nouvelles tentatives espacées. Une entrée
--- non chargée n'est jamais écrite (voir l'en-tête). Ne doit pas être appelée
--- dans le Heartbeat : elle attend entre les essais.
+-- Contenu à écrire, calculé sur la valeur stockée au moment de l'écriture
+-- (UpdateAsync peut le recalculer après un conflit). Le meilleur score par carte
+-- gagne entre le magasin et le cache ; après une réinitialisation, seul le cache compte.
+-- Appelée dans UpdateAsync : elle n'attend jamais, ne modifie pas l'entrée et ne
+-- renvoie jamais nil (ce qui annulerait l'écriture).
+local function recordsToWrite(entry, old)
+	local records = {}
+	if not entry.overwrite then
+		records = decode(old)
+	end
+	for mapId, score in pairs(entry.records) do
+		if bestOf(records, mapId) < score then
+			records[mapId] = score
+		end
+	end
+	return records
+end
+
+-- Écrit une entrée modifiée (fusionnée avec le magasin), avec nouvelles tentatives
+-- espacées. Une entrée non chargée n'est jamais écrite (voir l'en-tête). Ne doit pas
+-- être appelée dans le Heartbeat : elle attend entre les essais.
 local function saveEntry(entry)
 	if not store then
 		entry.dirty = false
@@ -173,23 +194,37 @@ local function saveEntry(entry)
 
 	entry.saving = true
 	local written = false
+	local committed = nil
 	for attempt = 1, SAVE_ATTEMPTS do
 		-- Une modification pendant l'écriture rouvre l'entrée : elle sera réécrite.
 		entry.dirty = false
-		local ok, err = pcall(function()
-			store:SetAsync(entry.key, { schema = SCHEMA_VERSION, records = entry.records })
+		local ok, value = pcall(function()
+			return store:UpdateAsync(entry.key, function(old)
+				return { schema = SCHEMA_VERSION, records = recordsToWrite(entry, old) }
+			end)
 		end)
 		if ok then
 			written = true
+			-- La valeur réellement écrite, quel que soit le nombre d'appels de la fonction.
+			committed = value
 			break
 		end
 		entry.dirty = true
-		warn("[MiniMotorways] Could not save profile (essai " .. attempt .. "/" .. SAVE_ATTEMPTS .. "): " .. tostring(err))
+		warn("[MiniMotorways] Could not save profile (essai " .. attempt .. "/" .. SAVE_ATTEMPTS .. "): " .. tostring(value))
 		if attempt < SAVE_ATTEMPTS then
 			task.wait(RETRY_BASE_SECONDS * 2 ^ (attempt - 1))
 		end
 	end
 	entry.saving = false
+	if written then
+		-- Le cache reprend les meilleurs scores écrits (ceux des autres serveurs), sans jamais baisser.
+		for mapId, score in pairs(decode(committed)) do
+			if bestOf(entry.records, mapId) < score then
+				entry.records[mapId] = score
+			end
+		end
+		entry.overwrite = false
+	end
 	-- Joueur parti dont la dernière écriture vient d'aboutir : le cache peut être libéré.
 	if written and entry.departed and cache[entry.userId] == entry then
 		cache[entry.userId] = nil
@@ -239,6 +274,8 @@ function Profile.load(player)
 		-- Un profil au format plat est réécrit en schéma 2 à la prochaine sauvegarde.
 		dirty = ok and type(value) == "table" and value.schema ~= SCHEMA_VERSION,
 		saving = false,
+		-- Vrai après une réinitialisation, jusqu'à une écriture réussie.
+		overwrite = false,
 	}
 	if player.Parent == nil then
 		-- Joueur parti pendant la lecture : rien à garder en cache.
@@ -333,14 +370,21 @@ end
 -- Remet tous les records à zéro, en mémoire puis dans le DataStore. Refusé si le
 -- profil n'a pas pu être lu : effacer une copie vide ne doit pas écraser les scores.
 function Profile.reset(player)
-	local records = Profile.load(player)
+	Profile.load(player)
 	local entry = cache[player.UserId]
 	if not entry or not entry.loaded then
 		return false
 	end
-	for mapId in pairs(records) do
-		records[mapId] = nil
+	-- Une écriture en vol fusionne encore l'ancien contenu : on attend son résultat
+	-- avant de vider, sinon elle rendrait ses scores au cache.
+	while entry.saving do
+		task.wait(SAVE_POLL_SECONDS)
 	end
+	for mapId in pairs(entry.records) do
+		entry.records[mapId] = nil
+	end
+	-- Écrasement : les écritures suivantes (y compris une reprise après échec) ne fusionnent plus.
+	entry.overwrite = true
 	entry.dirty = true
 	return saveEntry(entry)
 end
