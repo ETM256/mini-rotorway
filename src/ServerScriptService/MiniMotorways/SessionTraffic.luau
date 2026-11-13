@@ -551,7 +551,9 @@ return function(Session)
 			if tail then
 				local path = {}
 				local offset = 0
-				if lastKey and self.roads[lastKey] then
+				-- La dernière case atteinte n'est reprise devant que si la suite ne
+				-- commence pas déjà par elle (retour pas encore arrivé à son premier nœud).
+				if lastKey and lastKey ~= oldKey and self.roads[lastKey] then
 					path[1] = lastKey
 					offset = 1
 				end
